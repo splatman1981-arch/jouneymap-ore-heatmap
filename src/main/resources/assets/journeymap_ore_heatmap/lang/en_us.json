@@ -1,0 +1,18 @@
+{
+  "journeymap_ore_heatmap.config.enabled": "Enable Ore Heatmap",
+  "journeymap_ore_heatmap.config.enabled.tooltip": "Toggle the ore heatmap overlay on JourneyMap",
+  "journeymap_ore_heatmap.config.scanRadius": "Scan Radius",
+  "journeymap_ore_heatmap.config.scanRadius.tooltip": "Number of chunks to scan around the player (1-8)",
+  "journeymap_ore_heatmap.config.updateIntervalTicks": "Update Interval",
+  "journeymap_ore_heatmap.config.updateIntervalTicks.tooltip": "How often to update the overlay (in ticks)",
+  "journeymap_ore_heatmap.config.overlayOpacity": "Overlay Opacity",
+  "journeymap_ore_heatmap.config.overlayOpacity.tooltip": "Opacity of the heatmap overlay (0.1-1.0)",
+  "journeymap_ore_heatmap.config.showInCaves": "Show in Caves",
+  "journeymap_ore_heatmap.config.showInCaves.tooltip": "Display the overlay on cave/underground maps",
+
+  "key.categories.journeymap_ore_heatmap": "JourneyMap Ore Heatmap",
+  "key.journeymap_ore_heatmap.toggle_overlay": "Toggle Ore Heatmap",
+
+  "message.journeymap_ore_heatmap.overlay_enabled": "Ore Heatmap: Enabled",
+  "message.journeymap_ore_heatmap.overlay_disabled": "Ore Heatmap: Disabled"
+}
