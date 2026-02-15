@@ -24,8 +24,10 @@ public class OreHeatmapKeyBindings {
 
     public static final String KEY_CATEGORY = "key.categories." + OreHeatmapMod.MODID;
     public static final String KEY_TOGGLE_OVERLAY = "key." + OreHeatmapMod.MODID + ".toggle_overlay";
+    public static final String KEY_RESET_CACHE = "key." + OreHeatmapMod.MODID + ".reset_cache";
 
     public static KeyMapping toggleOverlayKey;
+    public static KeyMapping resetCacheKey;
 
     @SubscribeEvent
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
@@ -37,6 +39,15 @@ public class OreHeatmapKeyBindings {
                 KEY_CATEGORY
         );
         event.register(toggleOverlayKey);
+
+        resetCacheKey = new KeyMapping(
+                KEY_RESET_CACHE,
+                KeyConflictContext.IN_GAME,
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_P,  // Default to 'P', change as needed
+                KEY_CATEGORY
+        );
+        event.register(resetCacheKey);
 
         // Register the tick handler for key press detection
         NeoForge.EVENT_BUS.register(ClientTickHandler.class);
@@ -50,7 +61,7 @@ public class OreHeatmapKeyBindings {
     public static class ClientTickHandler {
         @SubscribeEvent
         public static void onClientTick(ClientTickEvent.Post event) {
-            if (toggleOverlayKey == null) {
+            if (toggleOverlayKey == null || resetCacheKey == null) {
                 return;
             }
 
@@ -77,6 +88,13 @@ public class OreHeatmapKeyBindings {
                 }
 
                 OreHeatmapMod.LOGGER.debug("Ore Heatmap overlay toggled: {}", newState);
+            }
+
+            while (resetCacheKey.consumeClick()) {
+                OreHeatmapPlugin plugin = OreHeatmapPlugin.getInstance();
+                if (plugin != null && plugin.getOverlayManager() != null) {
+                    plugin.getOverlayManager().resetCache();
+                }
             }
         }
     }

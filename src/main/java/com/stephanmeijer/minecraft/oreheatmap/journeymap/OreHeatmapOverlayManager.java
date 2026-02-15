@@ -30,6 +30,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
@@ -452,7 +453,7 @@ public class OreHeatmapOverlayManager {
     }
 
     private void updateOverlays(Level level, ResourceKey<Level> dimension, Map<String, Integer> oreCounts,
-                                 ChunkPos playerChunk, int radius) {
+                                ChunkPos playerChunk, int radius) {
         // Check cave display setting - skip if underground and setting is disabled
         if (!OreHeatmapConfig.SHOW_OVERLAY_IN_CAVES.get()) {
             try {
@@ -620,6 +621,76 @@ public class OreHeatmapOverlayManager {
             }
         }
         activeOverlays.clear();
+    }
+
+    /**
+     * Reset the cache, reload tracked ores, delete cache file, and force rescan nearby chunks.
+     */
+    public void resetCache() {
+        if (!ensureCorrectWorld()) {
+            return;
+        }
+
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null) {
+            return;
+        }
+
+        Level level = player.level();
+        ResourceKey<Level> dimension = level.dimension();
+        String dimKey = dimension.location().toString();
+
+        // Reload tracked ores from config
+        loadTrackedOres();
+
+        // Clear internal caches
+        dimensionOreCounts.clear();
+        clearAllOverlays();
+        maxOreCount.set(1);
+
+        // Delete cache file
+        Path cacheFile = getCacheFilePath();
+        if (cacheFile != null && Files.exists(cacheFile)) {
+            try {
+                Files.delete(cacheFile);
+                OreHeatmapMod.LOGGER.info("Deleted ore heatmap cache file for world: {}", currentWorldId);
+            } catch (IOException e) {
+                OreHeatmapMod.LOGGER.error("Failed to delete ore heatmap cache file", e);
+            }
+        }
+
+        // Force rescan nearby chunks
+        ChunkPos playerChunk = new ChunkPos(player.blockPosition());
+        int radius = OreHeatmapConfig.SCAN_RADIUS.get();
+        Map<String, Integer> oreCounts = dimensionOreCounts.computeIfAbsent(dimKey, k -> new ConcurrentHashMap<>());
+
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                ChunkPos cp = new ChunkPos(playerChunk.x + dx, playerChunk.z + dz);
+                if (level.hasChunk(cp.x, cp.z)) {
+                    int count = scanChunk(level, cp);
+                    if (count >= 0) {
+                        String key = cp.x + "," + cp.z;
+                        oreCounts.put(key, count);
+                        maxOreCount.updateAndGet(cur -> Math.max(cur, count));
+                        OreHeatmapMod.LOGGER.debug("Rescanned chunk {},{}: {} ores", cp.x, cp.z, count);
+                    }
+                }
+            }
+        }
+
+        // Immediately update overlays if enabled
+        if (OreHeatmapConfig.ENABLED.get()) {
+            updateOverlays(level, dimension, oreCounts, playerChunk, radius);
+        }
+
+        // Show feedback message
+        if (player != null) {
+            player.displayClientMessage(Component.literal("Ore heatmap cache reset and nearby chunks rescanned"), true);
+        }
+
+        OreHeatmapMod.LOGGER.info("Ore heatmap cache reset completed");
     }
 
 }
