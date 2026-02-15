@@ -76,7 +76,6 @@ public class OreHeatmapConfig {
                         "    [\"#c:ores/iron\"],",
                         "    [\"#c:ores/gold\"],",
                         "    [\"#c:ores/diamond\"],",
-                        "    [\"tfc:ore/rich_limonite/gabbro\", \"tfc:ore/normal_limonite/gabbro\"],",
                         "    [\"#c:ores/redstone\", \"#c:ores/lapis\"]",
                         "  ]")
                 .defineListAllowEmpty("orePresets", List.of(
