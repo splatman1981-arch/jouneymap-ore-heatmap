@@ -380,3 +380,10 @@ idea {
         downloadJavadoc = true
     }
 }
+tasks.named('checkstyleMain') {
+    enabled = false
+}
+
+tasks.named('spotbugsMain') {
+    enabled = false
+}

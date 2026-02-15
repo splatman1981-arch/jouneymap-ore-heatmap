@@ -12,7 +12,8 @@
 
   "key.categories.journeymap_ore_heatmap": "JourneyMap Ore Heatmap",
   "key.journeymap_ore_heatmap.toggle_overlay": "Toggle Ore Heatmap",
-
+  "key.journeymap_ore_heatmap.reload_heatmap": "Reload Heatmap",
+  "key.journeymap_ore_heatmap.cycle_preset": "Cycle Preset Heatmap",
   "message.journeymap_ore_heatmap.overlay_enabled": "Ore Heatmap: Enabled",
   "message.journeymap_ore_heatmap.overlay_disabled": "Ore Heatmap: Disabled"
 }

@@ -16,6 +16,10 @@ public class OreHeatmapConfig {
     // Ore configurations
     public static final ModConfigSpec.ConfigValue<List<? extends String>> TRACKED_ORES;
 
+    // Preset configurations
+    public static final ModConfigSpec.ConfigValue<List<? extends List<? extends String>>> ORE_PRESETS;
+    public static final ModConfigSpec.IntValue ACTIVE_PRESET_INDEX;
+
     public static final ModConfigSpec SPEC;
 
     static {
@@ -56,6 +60,41 @@ public class OreHeatmapConfig {
                 .defineListAllowEmpty("trackedOres", List.of(
                         "#c:ores"
                 ), OreHeatmapConfig::validateOreEntry);
+
+        BUILDER.pop();
+
+        BUILDER.comment("Preset switching (cycle with keybind)")
+                .push("presets");
+
+        ORE_PRESETS = BUILDER
+                .comment("List of ore preset groups for quick switching.",
+                        "Each entry is a list of block IDs or tags.",
+                        "Example:",
+                        "  orePresets = [",
+                        "    [\"#c:ores/coal\"],",
+                        "    [\"#c:ores/copper\"],",
+                        "    [\"#c:ores/iron\"],",
+                        "    [\"#c:ores/gold\"],",
+                        "    [\"#c:ores/diamond\"],",
+                        "    [\"tfc:ore/rich_limonite/gabbro\", \"tfc:ore/normal_limonite/gabbro\"],",
+                        "    [\"#c:ores/redstone\", \"#c:ores/lapis\"]",
+                        "  ]")
+                .defineListAllowEmpty("orePresets", List.of(
+                        List.of("#c:ores/coal"),
+                        List.of("#c:ores/copper"),
+                        List.of("#c:ores/iron"),
+                        List.of("#c:ores/gold"),
+                        List.of("#c:ores/diamond")
+                ), entry -> {
+                    if (entry instanceof List<?> list) {
+                        return list.stream().allMatch(inner -> inner instanceof String && validateOreEntry(inner));
+                    }
+                    return false;
+                });
+
+        ACTIVE_PRESET_INDEX = BUILDER
+                .comment("Active preset index (starting from 0). -1 = use TRACKED_ORES instead of presets.")
+                .defineInRange("activePresetIndex", -1, -1, Integer.MAX_VALUE);
 
         BUILDER.pop();
 
