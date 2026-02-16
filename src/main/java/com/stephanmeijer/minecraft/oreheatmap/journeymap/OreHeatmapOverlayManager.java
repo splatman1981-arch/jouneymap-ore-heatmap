@@ -662,7 +662,7 @@ public class OreHeatmapOverlayManager {
 
         // Force rescan nearby chunks
         ChunkPos playerChunk = new ChunkPos(player.blockPosition());
-        int radius = OreHeatmapConfig.SCAN_RADIUS.get();
+        int radius = OreHeatmapConfig.SCAN_RADIUS.get() * 5;
         Map<String, Integer> oreCounts = dimensionOreCounts.computeIfAbsent(dimKey, k -> new ConcurrentHashMap<>());
 
         for (int dx = -radius; dx <= radius; dx++) {
@@ -670,7 +670,7 @@ public class OreHeatmapOverlayManager {
                 ChunkPos cp = new ChunkPos(playerChunk.x + dx, playerChunk.z + dz);
                 if (level.hasChunk(cp.x, cp.z)) {
                     int count = scanChunk(level, cp);
-                    if (count >= 0) {
+                    if (count > 0) {
                         String key = cp.x + "," + cp.z;
                         oreCounts.put(key, count);
                         maxOreCount.updateAndGet(cur -> Math.max(cur, count));
