@@ -89,7 +89,6 @@ public class OreHeatmapOverlayManager {
     private int rescanRadius;
     private final Set<ChunkPos> pendingChunks = new HashSet<>();
     private int chunksScanned;
-    private static final int CHUNKS_PER_TICK = 1;
 
     public OreHeatmapOverlayManager(IClientAPI jmAPI) {
         this.jmAPI = jmAPI;
@@ -544,7 +543,8 @@ public class OreHeatmapOverlayManager {
             }
         }
 
-        rescanRadius = calculateVisibleRadius() * 2;
+        int visibleRadius = calculateVisibleRadius();
+        rescanRadius = (int) (visibleRadius * OreHeatmapConfig.RESCAN_RADIUS_MULTIPLIER.get());
         rescanCenter = new ChunkPos(player.blockPosition());
         pendingChunks.clear();
 
@@ -553,7 +553,7 @@ public class OreHeatmapOverlayManager {
         int queued = 0;
         for (int dx = -rescanRadius; dx <= rescanRadius; dx++) {
             for (int dz = -rescanRadius; dz <= rescanRadius; dz++) {
-                if (Math.hypot(dx, dz) <= rescanRadius) {  // True circle (round)
+                if (Math.hypot(dx, dz) <= rescanRadius) {  // True round circle
                     ChunkPos cp = new ChunkPos(rescanCenter.x + dx, rescanCenter.z + dz);
                     pendingChunks.add(cp);
                     queued++;
@@ -564,11 +564,10 @@ public class OreHeatmapOverlayManager {
         chunksScanned = 0;
         isRescanning = true;
 
-        OreHeatmapMod.LOGGER.info("ResetCache: Started background CIRCULAR rescan | radius={} | center={} | queued={} chunks", rescanRadius, rescanCenter, queued);
+        OreHeatmapMod.LOGGER.info("ResetCache: Started background CIRCULAR rescan | multiplier={} | radius={} | center={} | queued={} chunks",
+                OreHeatmapConfig.RESCAN_RADIUS_MULTIPLIER.get(), rescanRadius, rescanCenter, queued);
 
-        if (player != null) {
-            player.displayClientMessage(Component.literal("Ore heatmap reset! Background circular rescan started (radius " + rescanRadius + ")..."), true);
-        }
+        player.displayClientMessage(Component.literal("Ore heatmap reset! Background circular rescan started (radius " + rescanRadius + ")..."), true);
     }
 
     private void processRescanBatch(Level level, ResourceKey<Level> dimension) {
@@ -585,7 +584,7 @@ public class OreHeatmapOverlayManager {
             return;
         }
 
-        int batchSize = Math.min(CHUNKS_PER_TICK, pendingChunks.size());
+        int batchSize = Math.min(OreHeatmapConfig.RESCAN_CHUNKS_PER_TICK.get(), pendingChunks.size());
         List<ChunkPos> batch = new ArrayList<>(pendingChunks).subList(0, batchSize);
         pendingChunks.removeAll(batch);
 
@@ -635,8 +634,8 @@ public class OreHeatmapOverlayManager {
 
         if (OreHeatmapConfig.ENABLED.get()) {
             ChunkPos playerChunk = new ChunkPos(Minecraft.getInstance().player.blockPosition());
-            int radius = calculateVisibleRadius();
-            updateOverlays(level, dimension, dimensionOreCounts.get(dimension.location().toString()), playerChunk, radius);
+            int visibleRadius = calculateVisibleRadius();
+            updateOverlays(level, dimension, dimensionOreCounts.get(dimension.location().toString()), playerChunk, visibleRadius);
         }
 
         LocalPlayer player = Minecraft.getInstance().player;
