@@ -44,11 +44,11 @@ public class OreHeatmapConfig {
                 .define("showInCaves", true);
 
         RESCAN_RADIUS_MULTIPLIER = BUILDER
-                .comment("Multiplier for rescan radius (applied to visible/minimap radius). 2.0 = full coverage like you use.")
+                .comment("Re-Scan Radius Multiplier")
                 .defineInRange("rescanRadiusMultiplier", 2.0, 1.0, 5.0);
 
         RESCAN_CHUNKS_PER_TICK = BUILDER
-                .comment("Chunks scanned per tick during background rescan. Lower = smoother (you like 1). Higher = faster.")
+                .comment("Re-Scan Chunks per tick.")
                 .defineInRange("rescanChunksPerTick", 1, 1, 200);
 
         BUILDER.pop();
