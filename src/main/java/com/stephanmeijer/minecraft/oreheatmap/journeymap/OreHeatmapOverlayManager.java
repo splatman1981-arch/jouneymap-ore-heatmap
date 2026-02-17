@@ -89,7 +89,7 @@ public class OreHeatmapOverlayManager {
     private int rescanRadius;
     private final Set<ChunkPos> pendingChunks = new HashSet<>();
     private int chunksScanned;
-    private static final int CHUNKS_PER_TICK = 60; // Tune this if needed
+    private static final int CHUNKS_PER_TICK = 1;
 
     public OreHeatmapOverlayManager(IClientAPI jmAPI) {
         this.jmAPI = jmAPI;
@@ -363,11 +363,6 @@ public class OreHeatmapOverlayManager {
 
     private void updateOverlays(Level level, ResourceKey<Level> dim, Map<String, Integer> oreCounts,
                                 ChunkPos center, int radius) {
-        // Your exact working updateOverlays code (unchanged except logging added)
-        if (!OreHeatmapConfig.SHOW_OVERLAY_IN_CAVES.get()) {
-            // Optional cave check
-        }
-
         float maxOpacity = (float) (double) OreHeatmapConfig.OVERLAY_OPACITY.get();
         int currentMax = maxOreCount.get();
 
@@ -549,17 +544,16 @@ public class OreHeatmapOverlayManager {
             }
         }
 
-        rescanRadius = calculateVisibleRadius() + 2;
+        rescanRadius = calculateVisibleRadius() * 2;
         rescanCenter = new ChunkPos(player.blockPosition());
         pendingChunks.clear();
 
-        // Create the map immediately so background batches can find it
         Map<String, Integer> oreCounts = dimensionOreCounts.computeIfAbsent(dimKey, k -> new ConcurrentHashMap<>());
 
         int queued = 0;
         for (int dx = -rescanRadius; dx <= rescanRadius; dx++) {
             for (int dz = -rescanRadius; dz <= rescanRadius; dz++) {
-                if (Math.abs(dx) + Math.abs(dz) <= rescanRadius) {  // Manhattan circle
+                if (Math.hypot(dx, dz) <= rescanRadius) {  // True circle (round)
                     ChunkPos cp = new ChunkPos(rescanCenter.x + dx, rescanCenter.z + dz);
                     pendingChunks.add(cp);
                     queued++;
@@ -570,10 +564,10 @@ public class OreHeatmapOverlayManager {
         chunksScanned = 0;
         isRescanning = true;
 
-        OreHeatmapMod.LOGGER.info("ResetCache: Started background Manhattan rescan | radius={} | center={} | queued={} chunks", rescanRadius, rescanCenter, queued);
+        OreHeatmapMod.LOGGER.info("ResetCache: Started background CIRCULAR rescan | radius={} | center={} | queued={} chunks", rescanRadius, rescanCenter, queued);
 
         if (player != null) {
-            player.displayClientMessage(Component.literal("Ore heatmap reset! Background Manhattan rescan started (radius " + rescanRadius + ")..."), true);
+            player.displayClientMessage(Component.literal("Ore heatmap reset! Background circular rescan started (radius " + rescanRadius + ")..."), true);
         }
     }
 
@@ -595,6 +589,8 @@ public class OreHeatmapOverlayManager {
         List<ChunkPos> batch = new ArrayList<>(pendingChunks).subList(0, batchSize);
         pendingChunks.removeAll(batch);
 
+        OreHeatmapMod.LOGGER.debug("processRescanBatch: Starting batch of {} chunks (remaining: {})", batchSize, pendingChunks.size());
+
         int batchScanned = 0;
         int loadedZero = 0;
         int notLoaded = 0;
@@ -608,14 +604,14 @@ public class OreHeatmapOverlayManager {
                     oreCounts.put(key, count);
                     maxOreCount.updateAndGet(cur -> Math.max(cur, count));
                     batchScanned++;
-                    OreHeatmapMod.LOGGER.debug("Background batch: Scanned & saved chunk {},{} → {} ores", cp.x, cp.z, count);
+                    OreHeatmapMod.LOGGER.debug("processRescanBatch: Scanned & saved chunk {},{} → {} ores", cp.x, cp.z, count);
                 } else {
                     loadedZero++;
-                    OreHeatmapMod.LOGGER.debug("Background batch: Chunk {},{} loaded but 0 ores - not cached", cp.x, cp.z);
+                    OreHeatmapMod.LOGGER.debug("processRescanBatch: Chunk {},{} loaded but 0 ores - not cached", cp.x, cp.z);
                 }
             } else {
                 notLoaded++;
-                OreHeatmapMod.LOGGER.debug("Background batch: Chunk {},{} not loaded yet - still pending", cp.x, cp.z);
+                OreHeatmapMod.LOGGER.debug("processRescanBatch: Chunk {},{} not loaded yet - still pending", cp.x, cp.z);
             }
         }
 
@@ -627,7 +623,7 @@ public class OreHeatmapOverlayManager {
             player.displayClientMessage(Component.literal("Rescan progress: " + progress + "% (" + chunksScanned + " done)"), true);
         }
 
-        OreHeatmapMod.LOGGER.debug("Background batch complete | scanned={} | loaded-zero={} | not-loaded={} | remaining={}", batchScanned, loadedZero, notLoaded, pendingChunks.size());
+        OreHeatmapMod.LOGGER.debug("processRescanBatch: Batch complete | scanned={} | loaded-zero={} | not-loaded={} | remaining={}", batchScanned, loadedZero, notLoaded, pendingChunks.size());
 
         if (pendingChunks.isEmpty()) {
             finishRescan(level, dimension);
