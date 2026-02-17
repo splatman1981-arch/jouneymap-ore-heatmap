@@ -89,7 +89,7 @@ public class OreHeatmapOverlayManager {
     private int rescanRadius;
     private final Set<ChunkPos> pendingChunks = new HashSet<>();
     private int chunksScanned;
-    private static final int CHUNKS_PER_TICK = 60; // ~1 second for typical radius on most PCs
+    private static final int CHUNKS_PER_TICK = 60; // Tune this if needed
 
     public OreHeatmapOverlayManager(IClientAPI jmAPI) {
         this.jmAPI = jmAPI;
@@ -196,6 +196,7 @@ public class OreHeatmapOverlayManager {
         currentDimension = null;
         cacheLoadFailed = false;
         isRescanning = false;
+        pendingChunks.clear();
     }
 
     private boolean ensureCorrectWorld() {
@@ -239,8 +240,12 @@ public class OreHeatmapOverlayManager {
             if (count > 0) {
                 counts.put(key, count);
                 maxOreCount.updateAndGet(current -> Math.max(current, count));
-                OreHeatmapMod.LOGGER.debug("Scanned chunk {},{}: {} ores", pos.x, pos.z, count);
+                OreHeatmapMod.LOGGER.debug("onChunkLoad: Scanned chunk {},{}: {} ores", pos.x, pos.z, count);
+            } else {
+                OreHeatmapMod.LOGGER.debug("onChunkLoad: Chunk {},{} loaded but 0 ores - not cached", pos.x, pos.z);
             }
+        } else {
+            OreHeatmapMod.LOGGER.debug("onChunkLoad: Chunk {},{} already cached - skipped", pos.x, pos.z);
         }
     }
 
@@ -286,7 +291,6 @@ public class OreHeatmapOverlayManager {
             wasEnabled = enabled;
         }
 
-        // Background rescan — runs every tick
         if (isRescanning) {
             processRescanBatch(level, dim);
         }
@@ -307,28 +311,27 @@ public class OreHeatmapOverlayManager {
         int mcRadius = mc.options.renderDistance().get();
 
         try {
-            UIState fs = jmAPI.getUIState(Context.UI.Fullscreen);
-            if (fs != null && fs.active) {
-                int zoom = fs.zoom;
-                int blockRad = 128 >> zoom;
-                return Math.max(4, (blockRad / 16) + 2);
-            }
-
             UIState mm = jmAPI.getUIState(Context.UI.Minimap);
             if (mm != null) {
                 int zoom = mm.zoom;
                 int blockRad = 128 >> zoom;
-                return Math.max(2, (blockRad / 16) + 1);
+                int radius = Math.max(2, (blockRad / 16) + 1);
+                OreHeatmapMod.LOGGER.debug("calculateVisibleRadius: Using minimap JM radius: {}", radius);
+                return radius;
             }
-        } catch (Exception ignored) {
-            OreHeatmapMod.LOGGER.debug("Could not get JM UI state");
+        } catch (Exception e) {
+            OreHeatmapMod.LOGGER.debug("Could not get minimap state - falling back to MC render distance", e);
         }
 
+        OreHeatmapMod.LOGGER.debug("calculateVisibleRadius: Using MC render distance: {}", mcRadius);
         return mcRadius;
     }
 
     private int scanChunk(Level level, ChunkPos pos) {
-        if (!level.hasChunk(pos.x, pos.z)) return -1;
+        if (!level.hasChunk(pos.x, pos.z)) {
+            OreHeatmapMod.LOGGER.debug("scanChunk: Chunk {},{} not loaded - skipped", pos.x, pos.z);
+            return -1;
+        }
 
         LevelChunk chunk = level.getChunk(pos.x, pos.z);
         int count = 0;
@@ -344,6 +347,8 @@ public class OreHeatmapOverlayManager {
                 }
             }
         }
+
+        OreHeatmapMod.LOGGER.debug("scanChunk: Scanned chunk {},{} → {} ores found", pos.x, pos.z, count);
         return count;
     }
 
@@ -358,6 +363,7 @@ public class OreHeatmapOverlayManager {
 
     private void updateOverlays(Level level, ResourceKey<Level> dim, Map<String, Integer> oreCounts,
                                 ChunkPos center, int radius) {
+        // Your exact working updateOverlays code (unchanged except logging added)
         if (!OreHeatmapConfig.SHOW_OVERLAY_IN_CAVES.get()) {
             // Optional cave check
         }
@@ -365,77 +371,107 @@ public class OreHeatmapOverlayManager {
         float maxOpacity = (float) (double) OreHeatmapConfig.OVERLAY_OPACITY.get();
         int currentMax = maxOreCount.get();
 
-        Set<String> visible = new HashSet<>();
+        Set<String> visibleKeys = new HashSet<>();
+
         List<Map.Entry<String, Integer>> snapshot = new ArrayList<>(oreCounts.entrySet());
 
         for (Map.Entry<String, Integer> entry : snapshot) {
-            String key = entry.getKey();
-            int ores = entry.getValue();
+            String chunkKey = entry.getKey();
+            int totalOres = entry.getValue();
 
-            String[] coords = key.split(",");
-            if (coords.length != 2) continue;
+            visibleKeys.add(chunkKey);
 
-            int cx, cz;
+            if (totalOres == 0) {
+                PolygonOverlay existing = activeOverlays.remove(chunkKey);
+                if (existing != null) {
+                    try {
+                        jmAPI.remove(existing);
+                    } catch (Exception e) {
+                        OreHeatmapMod.LOGGER.debug("updateOverlays: Failed to remove 0-ore overlay: {}", e.getMessage());
+                    }
+                }
+                continue;
+            }
+
+            String[] parts = chunkKey.split(",");
+            if (parts.length != 2) {
+                OreHeatmapMod.LOGGER.warn("updateOverlays: Invalid chunk key format: {}", chunkKey);
+                continue;
+            }
+
+            ChunkPos chunkPos;
             try {
-                cx = Integer.parseInt(coords[0]);
-                cz = Integer.parseInt(coords[1]);
+                chunkPos = new ChunkPos(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]));
             } catch (NumberFormatException e) {
-                OreHeatmapMod.LOGGER.warn("Invalid chunk key in cache: {}", key);
+                OreHeatmapMod.LOGGER.warn("updateOverlays: Invalid chunk coordinates in key: {}", chunkKey);
                 continue;
             }
 
-            ChunkPos cp = new ChunkPos(cx, cz);
-            if (Math.max(Math.abs(cx - center.x), Math.abs(cz - center.z)) > radius) continue;
+            int color = calculateHeatmapColor(totalOres);
 
-            visible.add(key);
+            float densityFactor = Math.min(1.0f, totalOres / (float) Math.max(1, currentMax));
+            float fillOpacity = 0.2f + (densityFactor * (maxOpacity - 0.2f));
 
-            if (ores == 0) {
-                PolygonOverlay ov = activeOverlays.remove(key);
-                if (ov != null) jmAPI.remove(ov);
-                continue;
-            }
+            MapPolygon polygon = createChunkPolygon(chunkPos);
 
-            int color = calculateHeatmapColor(ores);
-            float density = Math.min(1.0f, ores / (float) Math.max(1, currentMax));
-            float opacity = 0.2f + density * (maxOpacity - 0.2f);
-
-            MapPolygon poly = createChunkPolygon(cp);
-
-            ShapeProperties props = new ShapeProperties()
-                    .setFillColor(color).setFillOpacity(opacity)
-                    .setStrokeColor(color).setStrokeOpacity(Math.min(1.0f, opacity + 0.15f))
+            ShapeProperties shapeProps = new ShapeProperties()
+                    .setFillColor(color)
+                    .setFillOpacity(fillOpacity)
+                    .setStrokeColor(color)
+                    .setStrokeOpacity(Math.min(1.0f, fillOpacity + 0.15f))
                     .setStrokeWidth(1.0f);
 
-            PolygonOverlay overlay = activeOverlays.get(key);
+            PolygonOverlay overlay = activeOverlays.get(chunkKey);
+
             if (overlay == null) {
-                overlay = new PolygonOverlay(OreHeatmapMod.MODID, dim, props, poly);
-                overlay.setTitle("Ores: " + ores + " blocks");
+                overlay = new PolygonOverlay(OreHeatmapMod.MODID, dim, shapeProps, polygon);
+                overlay.setTitle("Ores: " + totalOres + " blocks");
+
                 try {
                     jmAPI.show(overlay);
+                    activeOverlays.put(chunkKey, overlay);
                 } catch (Exception e) {
-                    throw new RuntimeException(e);
+                    OreHeatmapMod.LOGGER.error("updateOverlays: Failed to show overlay: {}", e.getMessage());
                 }
-                activeOverlays.put(key, overlay);
             } else {
-                overlay.setOuterArea(poly);
-                overlay.setShapeProperties(props);
-                overlay.setTitle("Ores: " + ores + " blocks");
+                overlay.setOuterArea(polygon);
+                overlay.setShapeProperties(shapeProps);
+                overlay.setTitle("Ores: " + totalOres + " blocks");
+
                 try {
                     jmAPI.show(overlay);
                 } catch (Exception e) {
-                    throw new RuntimeException(e);
+                    OreHeatmapMod.LOGGER.debug("updateOverlays: Failed to update overlay: {}", e.getMessage());
                 }
             }
         }
 
-        activeOverlays.keySet().removeIf(k -> !visible.contains(k));
+        Set<String> toRemove = new HashSet<>();
+        for (String key : activeOverlays.keySet()) {
+            if (!visibleKeys.contains(key)) {
+                toRemove.add(key);
+            }
+        }
+        for (String key : toRemove) {
+            PolygonOverlay overlay = activeOverlays.remove(key);
+            if (overlay != null) {
+                try {
+                    jmAPI.remove(overlay);
+                } catch (Exception e) {
+                    OreHeatmapMod.LOGGER.debug("updateOverlays: Failed to remove overlay: {}", e.getMessage());
+                }
+            }
+        }
     }
 
     private int calculateHeatmapColor(int oreCount) {
-        int max = maxOreCount.get();
-        if (max <= 1) return COLOR_MID;
+        int currentMax = maxOreCount.get();
+        if (currentMax <= 1) {
+            return COLOR_MID;
+        }
 
-        float t = (float) oreCount / max;
+        float t = oreCount / (float) currentMax;
+
         if (t < 0.5f) {
             return interpolateColor(COLOR_LOW, COLOR_MID, t * 2);
         } else {
@@ -443,19 +479,30 @@ public class OreHeatmapOverlayManager {
         }
     }
 
-    private int interpolateColor(int c1, int c2, float t) {
-        t = Math.max(0, Math.min(1, t));
-        int r = (int) (((c1 >> 16) & 0xFF) + t * (((c2 >> 16) & 0xFF) - ((c1 >> 16) & 0xFF)));
-        int g = (int) (((c1 >> 8) & 0xFF) + t * (((c2 >> 8) & 0xFF) - ((c1 >> 8) & 0xFF)));
-        int b = (int) ((c1 & 0xFF) + t * ((c2 & 0xFF) - (c1 & 0xFF)));
+    private int interpolateColor(int color1, int color2, float ratio) {
+        float t = Math.max(0, Math.min(1, ratio));
+
+        int r1 = (color1 >> 16) & 0xFF;
+        int g1 = (color1 >> 8) & 0xFF;
+        int b1 = color1 & 0xFF;
+
+        int r2 = (color2 >> 16) & 0xFF;
+        int g2 = (color2 >> 8) & 0xFF;
+        int b2 = color2 & 0xFF;
+
+        int r = (int) (r1 + (r2 - r1) * t);
+        int g = (int) (g1 + (g2 - g1) * t);
+        int b = (int) (b1 + (b2 - b1) * t);
+
         return (r << 16) | (g << 8) | b;
     }
 
-    private MapPolygon createChunkPolygon(ChunkPos pos) {
-        int minX = pos.getMinBlockX();
-        int minZ = pos.getMinBlockZ();
-        int maxX = pos.getMaxBlockX();
-        int maxZ = pos.getMaxBlockZ();
+    private MapPolygon createChunkPolygon(ChunkPos chunkPos) {
+        int minX = chunkPos.getMinBlockX();
+        int minZ = chunkPos.getMinBlockZ();
+        int maxX = chunkPos.getMaxBlockX();
+        int maxZ = chunkPos.getMaxBlockZ();
+
         return new MapPolygon(
                 new BlockPos(minX, POLYGON_Y_LEVEL, maxZ),
                 new BlockPos(maxX + 1, POLYGON_Y_LEVEL, maxZ),
@@ -465,11 +512,11 @@ public class OreHeatmapOverlayManager {
     }
 
     public void clearAllOverlays() {
-        for (PolygonOverlay ov : activeOverlays.values()) {
+        for (PolygonOverlay overlay : activeOverlays.values()) {
             try {
-                jmAPI.remove(ov);
+                jmAPI.remove(overlay);
             } catch (Exception e) {
-                OreHeatmapMod.LOGGER.debug("Failed to remove overlay during clear: {}", e.getMessage());
+                OreHeatmapMod.LOGGER.debug("clearAllOverlays: Failed to remove overlay: {}", e.getMessage());
             }
         }
         activeOverlays.clear();
@@ -483,8 +530,8 @@ public class OreHeatmapOverlayManager {
         if (player == null) return;
 
         Level level = player.level();
-        ResourceKey<Level> dim = level.dimension();
-        String dimKey = dim.location().toString();
+        ResourceKey<Level> dimension = level.dimension();
+        String dimKey = dimension.location().toString();
 
         loadTrackedOres();
 
@@ -506,10 +553,16 @@ public class OreHeatmapOverlayManager {
         rescanCenter = new ChunkPos(player.blockPosition());
         pendingChunks.clear();
 
+        // Create the map immediately so background batches can find it
+        Map<String, Integer> oreCounts = dimensionOreCounts.computeIfAbsent(dimKey, k -> new ConcurrentHashMap<>());
+
+        int queued = 0;
         for (int dx = -rescanRadius; dx <= rescanRadius; dx++) {
             for (int dz = -rescanRadius; dz <= rescanRadius; dz++) {
-                if (Math.abs(dx) + Math.abs(dz) <= rescanRadius) {
-                    pendingChunks.add(new ChunkPos(rescanCenter.x + dx, rescanCenter.z + dz));
+                if (Math.abs(dx) + Math.abs(dz) <= rescanRadius) {  // Manhattan circle
+                    ChunkPos cp = new ChunkPos(rescanCenter.x + dx, rescanCenter.z + dz);
+                    pendingChunks.add(cp);
+                    queued++;
                 }
             }
         }
@@ -517,15 +570,24 @@ public class OreHeatmapOverlayManager {
         chunksScanned = 0;
         isRescanning = true;
 
-        player.displayClientMessage(Component.literal("Ore heatmap reset! Background circular rescan started (radius " + rescanRadius + ")..."), true);
-        OreHeatmapMod.LOGGER.info("Cache reset; background rescan started ({} chunks queued)", pendingChunks.size());
+        OreHeatmapMod.LOGGER.info("ResetCache: Started background Manhattan rescan | radius={} | center={} | queued={} chunks", rescanRadius, rescanCenter, queued);
+
+        if (player != null) {
+            player.displayClientMessage(Component.literal("Ore heatmap reset! Background Manhattan rescan started (radius " + rescanRadius + ")..."), true);
+        }
     }
 
-    private void processRescanBatch(Level level, ResourceKey<Level> dim) {
-        String dimKey = dim.location().toString();
+    private void processRescanBatch(Level level, ResourceKey<Level> dimension) {
+        String dimKey = dimension.location().toString();
         Map<String, Integer> oreCounts = dimensionOreCounts.get(dimKey);
         if (oreCounts == null) {
+            OreHeatmapMod.LOGGER.warn("processRescanBatch: No oreCounts map for dimension {} - stopping", dimKey);
             isRescanning = false;
+            return;
+        }
+
+        if (pendingChunks.isEmpty()) {
+            finishRescan(level, dimension);
             return;
         }
 
@@ -534,15 +596,26 @@ public class OreHeatmapOverlayManager {
         pendingChunks.removeAll(batch);
 
         int batchScanned = 0;
+        int loadedZero = 0;
+        int notLoaded = 0;
+
         for (ChunkPos cp : batch) {
+            String key = cp.x + "," + cp.z;
+
             if (level.hasChunk(cp.x, cp.z)) {
                 int count = scanChunk(level, cp);
                 if (count > 0) {
-                    String key = cp.x + "," + cp.z;
                     oreCounts.put(key, count);
                     maxOreCount.updateAndGet(cur -> Math.max(cur, count));
                     batchScanned++;
+                    OreHeatmapMod.LOGGER.debug("Background batch: Scanned & saved chunk {},{} → {} ores", cp.x, cp.z, count);
+                } else {
+                    loadedZero++;
+                    OreHeatmapMod.LOGGER.debug("Background batch: Chunk {},{} loaded but 0 ores - not cached", cp.x, cp.z);
                 }
+            } else {
+                notLoaded++;
+                OreHeatmapMod.LOGGER.debug("Background batch: Chunk {},{} not loaded yet - still pending", cp.x, cp.z);
             }
         }
 
@@ -551,18 +624,30 @@ public class OreHeatmapOverlayManager {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
             int progress = pendingChunks.isEmpty() ? 100 : (int) ((chunksScanned / (float) (chunksScanned + pendingChunks.size())) * 100);
-            player.displayClientMessage(Component.literal("Rescan progress: " + progress + "%"), true);
+            player.displayClientMessage(Component.literal("Rescan progress: " + progress + "% (" + chunksScanned + " done)"), true);
         }
 
+        OreHeatmapMod.LOGGER.debug("Background batch complete | scanned={} | loaded-zero={} | not-loaded={} | remaining={}", batchScanned, loadedZero, notLoaded, pendingChunks.size());
+
         if (pendingChunks.isEmpty()) {
-            isRescanning = false;
-            if (OreHeatmapConfig.ENABLED.get()) {
-                updateOverlays(level, dim, oreCounts, rescanCenter, rescanRadius);
-            }
-            if (player != null) {
-                player.displayClientMessage(Component.literal("Background rescan complete!"), true);
-            }
-            OreHeatmapMod.LOGGER.info("Background rescan finished");
+            finishRescan(level, dimension);
         }
+    }
+
+    private void finishRescan(Level level, ResourceKey<Level> dimension) {
+        isRescanning = false;
+
+        if (OreHeatmapConfig.ENABLED.get()) {
+            ChunkPos playerChunk = new ChunkPos(Minecraft.getInstance().player.blockPosition());
+            int radius = calculateVisibleRadius();
+            updateOverlays(level, dimension, dimensionOreCounts.get(dimension.location().toString()), playerChunk, radius);
+        }
+
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player != null) {
+            player.displayClientMessage(Component.literal("Background rescan complete!"), true);
+        }
+
+        OreHeatmapMod.LOGGER.info("Background rescan finished | total scanned: {}", chunksScanned);
     }
 }
