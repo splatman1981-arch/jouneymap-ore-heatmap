@@ -67,6 +67,11 @@ public class OreHeatmapOverlayManager {
     private static final int COLOR_MID = 0xFF8C00;   // Dark orange
     private static final int COLOR_HIGH = 0x8B0000;  // Dark red
 
+    // === NEW: Per-slot tracking & caches (this fixes all 3 issues) ===
+    private final Map<Integer, Map<String, Integer>> slotOreCounts = new ConcurrentHashMap<>();
+    private final Map<Integer, Set<ResourceLocation>> slotTrackedBlocks = new HashMap<>();
+    private final Map<Integer, Set<TagKey<Block>>> slotTrackedTags = new HashMap<>();
+
     // Y-coordinate for overlay polygon plane
     private static final int POLYGON_Y_LEVEL = 64;
 
@@ -89,7 +94,7 @@ public class OreHeatmapOverlayManager {
 
     public OreHeatmapOverlayManager(IClientAPI jmAPI) {
         this.jmAPI = jmAPI;
-        loadTrackedOres();
+        loadAllTrackedOres();
         initializeCacheDirectory();
     }
 
@@ -104,25 +109,37 @@ public class OreHeatmapOverlayManager {
         }
     }
 
-    private void loadTrackedOres() {
-        trackedBlocks.clear();
-        trackedTags.clear();
+    private void loadAllTrackedOres() {
+        slotTrackedBlocks.clear();
+        slotTrackedTags.clear();
 
-        for (String entry : OreHeatmapConfig.TRACKED_ORES.get()) {
+        loadTrackedForSlot(1, OreHeatmapConfig.TRACKED_ORES.get());
+        loadTrackedForSlot(2, OreHeatmapConfig.TRACKED_ORES2.get());
+        loadTrackedForSlot(3, OreHeatmapConfig.TRACKED_ORES3.get());
+        loadTrackedForSlot(4, OreHeatmapConfig.TRACKED_ORES4.get());
+        loadTrackedForSlot(5, OreHeatmapConfig.TRACKED_ORES5.get());
+
+        OreHeatmapMod.LOGGER.info("Loaded tracked ores for all 5 slots");
+    }
+
+    private void loadTrackedForSlot(int slot, List<? extends String> list) {
+        Set<ResourceLocation> blocks = new HashSet<>();
+        Set<TagKey<Block>> tags = new HashSet<>();
+
+        for (String entry : list) {
             String trimmed = entry.trim();
+            if (trimmed.isEmpty()) continue;
 
             if (trimmed.startsWith("#")) {
                 String tagId = trimmed.substring(1);
-                TagKey<Block> tag = TagKey.create(Registries.BLOCK, ResourceLocation.parse(tagId));
-                trackedTags.add(tag);
-                OreHeatmapMod.LOGGER.debug("Tracking ore tag: {}", tagId);
+                tags.add(TagKey.create(Registries.BLOCK, ResourceLocation.parse(tagId)));
             } else {
-                trackedBlocks.add(ResourceLocation.parse(trimmed));
+                blocks.add(ResourceLocation.parse(trimmed));
             }
         }
 
-        OreHeatmapMod.LOGGER.info("Loaded {} tracked blocks and {} tracked tags",
-                trackedBlocks.size(), trackedTags.size());
+        slotTrackedBlocks.put(slot, blocks);
+        slotTrackedTags.put(slot, tags);
     }
 
     private String getWorldId() {
@@ -146,7 +163,6 @@ public class OreHeatmapOverlayManager {
         }
         // overlay1.json, overlay2.json, etc.
         String fileName = "overlay" + activeOverlaySlot + ".json";
-        OreHeatmapMod.LOGGER.debug("getCacheFilePath -> overlay" + activeOverlaySlot + ".json");
         return cacheDirectory.resolve(currentWorldId).resolve(fileName);
     }
 
@@ -270,22 +286,61 @@ public class OreHeatmapOverlayManager {
 
         LevelChunk chunk = (LevelChunk) event.getChunk();
         ChunkPos pos = chunk.getPos();
-
-        Map<String, Integer> counts = currentOreCounts;
-
         String key = pos.x + "," + pos.z;
-        if (!counts.containsKey(key)) {
-            int count = scanChunk(level, pos);
+
+        // Scan once, then distribute count to every configured slot
+        for (int slot = 1; slot <= 5; slot++) {
+            if (slotTrackedBlocks.get(slot).isEmpty() && slotTrackedTags.get(slot).isEmpty()) continue; // skip blank slots
+
+            int count = scanChunkForSlot(level, pos, slot);
             if (count > 0) {
-                counts.put(key, count);
-                maxOreCount.updateAndGet(current -> Math.max(current, count));
-                OreHeatmapMod.LOGGER.debug("onChunkLoad: Scanned chunk {},{}: {} ores", pos.x, pos.z, count);
-            } else {
-                OreHeatmapMod.LOGGER.debug("onChunkLoad: Chunk {},{} loaded but 0 ores - not cached", pos.x, pos.z);
+                Map<String, Integer> cache = slotOreCounts.computeIfAbsent(slot, k -> new ConcurrentHashMap<>());
+                cache.put(key, count);
+
+                // If this is the currently displayed slot, update live max
+                if (slot == activeOverlaySlot) {
+                    currentOreCounts = cache;
+                    maxOreCount.updateAndGet(cur -> Math.max(cur, count));
+                }
+
+                OreHeatmapMod.LOGGER.debug("onChunkLoad: Slot {} chunk {},{} → {} ores", slot, pos.x, pos.z, count);
             }
-        } else {
-            OreHeatmapMod.LOGGER.debug("onChunkLoad: Chunk {},{} already cached - skipped", pos.x, pos.z);
         }
+    }
+
+    private int scanChunkForSlot(Level level, ChunkPos pos, int slot) {
+        if (!level.hasChunk(pos.x, pos.z)) return 0;
+
+        LevelChunk chunk = level.getChunk(pos.x, pos.z);
+        int count = 0;
+
+        Set<ResourceLocation> blocks = slotTrackedBlocks.get(slot);
+        Set<TagKey<Block>> tags = slotTrackedTags.get(slot);
+
+        int minY = level.getMinBuildHeight();
+        int maxY = level.getMaxBuildHeight();
+
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                for (int y = minY; y < maxY; y++) {
+                    BlockPos bp = new BlockPos(pos.getMinBlockX() + x, y, pos.getMinBlockZ() + z);
+                    BlockState state = chunk.getBlockState(bp);
+
+                    ResourceLocation id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+                    if (blocks.contains(id)) {
+                        count++;
+                        continue;
+                    }
+                    for (TagKey<Block> tag : tags) {
+                        if (state.is(tag)) {
+                            count++;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return count;
     }
 
     @SubscribeEvent
@@ -566,7 +621,7 @@ public class OreHeatmapOverlayManager {
         ResourceKey<Level> dimension = level.dimension();
         String dimKey = dimension.location().toString();
 
-        loadTrackedOres();
+        loadAllTrackedOres();
 
         // Clear only current slot's data
         currentOreCounts.clear();
@@ -605,29 +660,27 @@ public class OreHeatmapOverlayManager {
         player.displayClientMessage(Component.literal("Reset Overlay " + activeOverlaySlot + "! Background rescan started..."), true);
         OreHeatmapMod.LOGGER.info("ResetCache: Started for slot {} | radius={} | queued={} chunks", activeOverlaySlot, rescanRadius, queued);
     }
-    //****
     public void cycleOverlay() {
-        int originalSlot = activeOverlaySlot;
+        int original = activeOverlaySlot;
         int attempts = 0;
 
         do {
-            activeOverlaySlot++;
-            if (activeOverlaySlot > 5) {
-                activeOverlaySlot = 1;
-            }
-
+            activeOverlaySlot = (activeOverlaySlot % 5) + 1;
             attempts++;
             if (attempts > 5) {
-                // All slots empty — stay on current
-                OreHeatmapMod.LOGGER.debug("No non-empty overlays found - staying on slot {}", originalSlot);
+                activeOverlaySlot = original;
+                Minecraft.getInstance().player.displayClientMessage(Component.literal("No other configured overlays!"), true);
                 return;
             }
-        } while (!isOverlayConfigured(activeOverlaySlot));
+        } while (slotTrackedBlocks.get(activeOverlaySlot).isEmpty() && slotTrackedTags.get(activeOverlaySlot).isEmpty());
 
-        // Load the new slot's cache
-        loadCacheFromDisk();
+        // Switch active cache
+        currentOreCounts = slotOreCounts.computeIfAbsent(activeOverlaySlot, k -> new ConcurrentHashMap<>());
 
-        // Rebuild visible overlays
+        // Reset max for new slot
+        recalculateMaxOreCountForActiveSlot();
+
+        // Rebuild display
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         if (player != null && OreHeatmapConfig.ENABLED.get()) {
@@ -642,17 +695,14 @@ public class OreHeatmapOverlayManager {
 
         OreHeatmapMod.LOGGER.info("Cycled to overlay slot {}", activeOverlaySlot);
     }
-    private boolean isOverlayConfigured(int slot) {
-        return switch (slot) {
-            case 1 -> !OreHeatmapConfig.TRACKED_ORES.get().isEmpty();
-            case 2 -> !OreHeatmapConfig.TRACKED_ORES2.get().isEmpty();
-            case 3 -> !OreHeatmapConfig.TRACKED_ORES3.get().isEmpty();
-            case 4 -> !OreHeatmapConfig.TRACKED_ORES4.get().isEmpty();
-            case 5 -> !OreHeatmapConfig.TRACKED_ORES5.get().isEmpty();
-            default -> false;
-        };
+
+    private void recalculateMaxOreCountForActiveSlot() {
+        int max = 1;
+        for (int c : currentOreCounts.values()) {
+            max = Math.max(max, c);
+        }
+        maxOreCount.set(max);
     }
-    //****
     private void processRescanBatch(Level level, ResourceKey<Level> dimension) {
         String dimKey = dimension.location().toString();
         Map<String, Integer> oreCounts = currentOreCounts;
