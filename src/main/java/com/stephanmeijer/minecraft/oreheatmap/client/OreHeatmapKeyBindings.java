@@ -25,9 +25,11 @@ public class OreHeatmapKeyBindings {
     public static final String KEY_CATEGORY = "key.categories." + OreHeatmapMod.MODID;
     public static final String KEY_TOGGLE_OVERLAY = "key." + OreHeatmapMod.MODID + ".toggle_overlay";
     public static final String KEY_RESET_CACHE = "key." + OreHeatmapMod.MODID + ".reset_cache";
+    public static final String KEY_CYCLE_OVERLAY = "key." + OreHeatmapMod.MODID + ".cycle_overlay";
 
     public static KeyMapping toggleOverlayKey;
     public static KeyMapping resetCacheKey;
+    public static KeyMapping cycleOverlayKey;
 
     @SubscribeEvent
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
@@ -49,6 +51,15 @@ public class OreHeatmapKeyBindings {
         );
         event.register(resetCacheKey);
 
+        cycleOverlayKey = new KeyMapping(
+                KEY_CYCLE_OVERLAY,
+                KeyConflictContext.IN_GAME,
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_I,  // Default to 'I', change as needed
+                KEY_CATEGORY
+        );
+        event.register(cycleOverlayKey);
+
         // Register the tick handler for key press detection
         NeoForge.EVENT_BUS.register(ClientTickHandler.class);
 
@@ -61,7 +72,7 @@ public class OreHeatmapKeyBindings {
     public static class ClientTickHandler {
         @SubscribeEvent
         public static void onClientTick(ClientTickEvent.Post event) {
-            if (toggleOverlayKey == null || resetCacheKey == null) {
+            if (toggleOverlayKey == null || resetCacheKey == null || cycleOverlayKey == null) {
                 return;
             }
 
@@ -94,6 +105,16 @@ public class OreHeatmapKeyBindings {
                 OreHeatmapPlugin plugin = OreHeatmapPlugin.getInstance();
                 if (plugin != null && plugin.getOverlayManager() != null) {
                     plugin.getOverlayManager().resetCache();
+                }
+            }
+            while (cycleOverlayKey.consumeClick()) {
+                OreHeatmapPlugin plugin = OreHeatmapPlugin.getInstance();
+                if (plugin != null && plugin.getOverlayManager() != null) {
+                    plugin.getOverlayManager().cycleOverlay();
+                    Minecraft mc = Minecraft.getInstance();
+                    if (mc.player != null) {
+                        mc.player.displayClientMessage(Component.literal("Switched to next overlay"), true);
+                    }
                 }
             }
         }

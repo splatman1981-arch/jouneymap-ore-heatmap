@@ -13,10 +13,14 @@ public class OreHeatmapConfig {
     public static final ModConfigSpec.IntValue UPDATE_INTERVAL_TICKS;
     public static final ModConfigSpec.DoubleValue OVERLAY_OPACITY;
     public static final ModConfigSpec.BooleanValue SHOW_OVERLAY_IN_CAVES;
+    public static final ModConfigSpec.IntValue ACTIVE_OVERLAY_SLOT;
 
     // Ore configurations
     public static final ModConfigSpec.ConfigValue<List<? extends String>> TRACKED_ORES;
-
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> TRACKED_ORES2;
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> TRACKED_ORES3;
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> TRACKED_ORES4;
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> TRACKED_ORES5;
     public static final ModConfigSpec SPEC;
 
     static {
@@ -25,7 +29,7 @@ public class OreHeatmapConfig {
 
         ENABLED = BUILDER
                 .comment("Enable the ore heatmap overlay")
-                .define("enabled", false);
+                .define("enabled", true);
 
         SCAN_RADIUS = BUILDER
                 .comment("Chunk scan radius around the player (1-8)")
@@ -51,6 +55,10 @@ public class OreHeatmapConfig {
                 .comment("Re-Scan Chunks per tick.")
                 .defineInRange("rescanChunksPerTick", 1, 1, 200);
 
+        ACTIVE_OVERLAY_SLOT = BUILDER
+                .comment("Currently active overlay slot (1-5). 1 = default overlay.")
+                .defineInRange("activeOverlaySlot", 1, 1, 5);
+
         BUILDER.pop();
 
         BUILDER.comment("Ore tracking configuration")
@@ -64,6 +72,27 @@ public class OreHeatmapConfig {
                         "The #c:ores tag includes all ores from vanilla and most mods.")
                 .defineListAllowEmpty("trackedOres", List.of(
                         "#c:ores"
+                ), OreHeatmapConfig::validateOreEntry);
+
+        TRACKED_ORES2 = BUILDER
+                .comment("List of ores to track for 2nd overlay.")
+                .defineListAllowEmpty("trackedOres2", List.of(
+                        "#c:ores/coper/rich"
+                ), OreHeatmapConfig::validateOreEntry);
+        TRACKED_ORES3 = BUILDER
+                .comment("List of ores to track for 3rd overlay.")
+                .defineListAllowEmpty("trackedOres3", List.of(
+                        "#c:ores/cast_iron/rich"
+                ), OreHeatmapConfig::validateOreEntry);
+        TRACKED_ORES4 = BUILDER
+                .comment("List of ores to track for 4th overlay.")
+                .defineListAllowEmpty("trackedOres4", List.of(
+                        ""
+                ), OreHeatmapConfig::validateOreEntry);
+        TRACKED_ORES5 = BUILDER
+                .comment("List of ores to track for 5th overlay.")
+                .defineListAllowEmpty("trackedOres5", List.of(
+                        ""
                 ), OreHeatmapConfig::validateOreEntry);
 
         BUILDER.pop();

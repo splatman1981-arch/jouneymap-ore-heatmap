@@ -6,11 +6,7 @@ import java.io.Writer;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -50,7 +46,8 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
  * Uses event-based architecture: scans chunks when they load.
  */
 public class OreHeatmapOverlayManager {
-
+    private int activeOverlaySlot = OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.get();
+    private Map<String, Integer> currentOreCounts = new ConcurrentHashMap<>();
     private final IClientAPI jmAPI;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -144,40 +141,84 @@ public class OreHeatmapOverlayManager {
     }
 
     private Path getCacheFilePath() {
-        if (cacheDirectory == null || currentWorldId == null) return null;
-        return cacheDirectory.resolve(currentWorldId + ".json");
+        if (cacheDirectory == null || currentWorldId == null) {
+            return null;
+        }
+        // overlay1.json, overlay2.json, etc.
+        String fileName = "overlay" + activeOverlaySlot + ".json";
+        OreHeatmapMod.LOGGER.debug("getCacheFilePath -> overlay" + activeOverlaySlot + ".json");
+        return cacheDirectory.resolve(currentWorldId).resolve(fileName);
     }
 
     private void loadCacheFromDisk() {
         cacheLoadFailed = false;
+
         Path cacheFile = getCacheFilePath();
-        if (cacheFile == null || !Files.exists(cacheFile)) return;
+        if (cacheFile == null) {
+            OreHeatmapMod.LOGGER.debug("Cache file path unavailable for slot {}", activeOverlaySlot);
+            currentOreCounts.clear();
+            return;
+        }
+
+        try {
+            Files.createDirectories(cacheFile.getParent());
+        } catch (IOException e) {
+            OreHeatmapMod.LOGGER.error("Failed to create world cache directory", e);
+            cacheLoadFailed = true;
+            currentOreCounts.clear();
+            return;
+        }
+
+        if (!Files.exists(cacheFile)) {
+            OreHeatmapMod.LOGGER.debug("No cache file found for slot {}: {}", activeOverlaySlot, cacheFile);
+            currentOreCounts.clear();
+            return;
+        }
 
         try (Reader reader = Files.newBufferedReader(cacheFile)) {
             Type type = new TypeToken<Map<String, Map<String, Integer>>>(){}.getType();
             Map<String, Map<String, Integer>> loaded = GSON.fromJson(reader, type);
             if (loaded != null) {
-                dimensionOreCounts.clear();
-                dimensionOreCounts.putAll(loaded);
+                currentOreCounts.clear();
+                String dimKey = Minecraft.getInstance().level.dimension().location().toString();
+                currentOreCounts.putAll(loaded.getOrDefault(dimKey, new ConcurrentHashMap<>()));
                 recalculateMaxOreCount();
-                OreHeatmapMod.LOGGER.info("Loaded ore cache for world: {} ({} dimensions)", currentWorldId, dimensionOreCounts.size());
+                OreHeatmapMod.LOGGER.info("Loaded cache for slot {}: {} chunks", activeOverlaySlot, currentOreCounts.size());
             }
         } catch (Exception e) {
-            OreHeatmapMod.LOGGER.error("Failed to load ore cache for world: {}", currentWorldId, e);
+            OreHeatmapMod.LOGGER.error("Failed to load cache for slot {}: {}", activeOverlaySlot, cacheFile, e);
             cacheLoadFailed = true;
+            currentOreCounts.clear();
         }
     }
 
     private void saveCacheToDisk() {
-        if (dimensionOreCounts.isEmpty()) return;
+        if (currentOreCounts.isEmpty()) return;
+
         Path cacheFile = getCacheFilePath();
-        if (cacheFile == null) return;
+        if (cacheFile == null) {
+            OreHeatmapMod.LOGGER.debug("Cannot save cache: file path unavailable for slot {}", activeOverlaySlot);
+            return;
+        }
+
+        // Ensure parent directory exists
+        try {
+            Files.createDirectories(cacheFile.getParent());
+        } catch (IOException e) {
+            OreHeatmapMod.LOGGER.error("Failed to create world cache directory for save", e);
+            return;
+        }
+
+        // Wrap current dimension data
+        String dimKey = currentDimension.location().toString();
+        Map<String, Map<String, Integer>> toSave = new HashMap<>();
+        toSave.put(dimKey, new HashMap<>(currentOreCounts));
 
         try (Writer writer = Files.newBufferedWriter(cacheFile)) {
-            GSON.toJson(dimensionOreCounts, writer);
-            OreHeatmapMod.LOGGER.debug("Saved ore cache for world: {}", currentWorldId);
+            GSON.toJson(toSave, writer);
+            OreHeatmapMod.LOGGER.debug("Saved cache for slot {}: {} chunks", activeOverlaySlot, currentOreCounts.size());
         } catch (IOException e) {
-            OreHeatmapMod.LOGGER.error("Failed to save ore cache", e);
+            OreHeatmapMod.LOGGER.error("Failed to save cache for slot {}: {}", activeOverlaySlot, cacheFile, e);
         }
     }
 
@@ -230,8 +271,7 @@ public class OreHeatmapOverlayManager {
         LevelChunk chunk = (LevelChunk) event.getChunk();
         ChunkPos pos = chunk.getPos();
 
-        String dimKey = level.dimension().location().toString();
-        Map<String, Integer> counts = dimensionOreCounts.computeIfAbsent(dimKey, k -> new ConcurrentHashMap<>());
+        Map<String, Integer> counts = currentOreCounts;
 
         String key = pos.x + "," + pos.z;
         if (!counts.containsKey(key)) {
@@ -277,8 +317,7 @@ public class OreHeatmapOverlayManager {
             }
 
             boolean enabled = OreHeatmapConfig.ENABLED.get();
-            String dimKey = dim.location().toString();
-            Map<String, Integer> oreCounts = dimensionOreCounts.get(dimKey);
+            Map<String, Integer> oreCounts = currentOreCounts;
 
             if (enabled && oreCounts != null) {
                 ChunkPos pChunk = new ChunkPos(player.blockPosition());
@@ -529,7 +568,8 @@ public class OreHeatmapOverlayManager {
 
         loadTrackedOres();
 
-        dimensionOreCounts.clear();
+        // Clear only current slot's data
+        currentOreCounts.clear();
         clearAllOverlays();
         maxOreCount.set(1);
 
@@ -537,23 +577,21 @@ public class OreHeatmapOverlayManager {
         if (cacheFile != null && Files.exists(cacheFile)) {
             try {
                 Files.delete(cacheFile);
-                OreHeatmapMod.LOGGER.info("Deleted ore heatmap cache file for world: {}", currentWorldId);
+                OreHeatmapMod.LOGGER.info("Deleted cache file for slot {}: {}", activeOverlaySlot, cacheFile);
             } catch (IOException e) {
-                OreHeatmapMod.LOGGER.error("Failed to delete ore heatmap cache file", e);
+                OreHeatmapMod.LOGGER.error("Failed to delete cache file for slot {}", activeOverlaySlot, e);
             }
         }
 
-        int visibleRadius = calculateVisibleRadius();
-        rescanRadius = (int) (visibleRadius * OreHeatmapConfig.RESCAN_RADIUS_MULTIPLIER.get());
+        // Start background rescan for current slot
+        rescanRadius = calculateVisibleRadius() + 2;
         rescanCenter = new ChunkPos(player.blockPosition());
         pendingChunks.clear();
-
-        Map<String, Integer> oreCounts = dimensionOreCounts.computeIfAbsent(dimKey, k -> new ConcurrentHashMap<>());
 
         int queued = 0;
         for (int dx = -rescanRadius; dx <= rescanRadius; dx++) {
             for (int dz = -rescanRadius; dz <= rescanRadius; dz++) {
-                if (Math.hypot(dx, dz) <= rescanRadius) {  // True round circle
+                if (Math.hypot(dx, dz) <= rescanRadius) {
                     ChunkPos cp = new ChunkPos(rescanCenter.x + dx, rescanCenter.z + dz);
                     pendingChunks.add(cp);
                     queued++;
@@ -564,15 +602,60 @@ public class OreHeatmapOverlayManager {
         chunksScanned = 0;
         isRescanning = true;
 
-        OreHeatmapMod.LOGGER.info("ResetCache: Started background CIRCULAR rescan | multiplier={} | radius={} | center={} | queued={} chunks",
-                OreHeatmapConfig.RESCAN_RADIUS_MULTIPLIER.get(), rescanRadius, rescanCenter, queued);
-
-        player.displayClientMessage(Component.literal("Ore heatmap reset! Background circular rescan started (radius " + rescanRadius + ")..."), true);
+        player.displayClientMessage(Component.literal("Reset Overlay " + activeOverlaySlot + "! Background rescan started..."), true);
+        OreHeatmapMod.LOGGER.info("ResetCache: Started for slot {} | radius={} | queued={} chunks", activeOverlaySlot, rescanRadius, queued);
     }
+    //****
+    public void cycleOverlay() {
+        int originalSlot = activeOverlaySlot;
+        int attempts = 0;
 
+        do {
+            activeOverlaySlot++;
+            if (activeOverlaySlot > 5) {
+                activeOverlaySlot = 1;
+            }
+
+            attempts++;
+            if (attempts > 5) {
+                // All slots empty — stay on current
+                OreHeatmapMod.LOGGER.debug("No non-empty overlays found - staying on slot {}", originalSlot);
+                return;
+            }
+        } while (!isOverlayConfigured(activeOverlaySlot));
+
+        // Load the new slot's cache
+        loadCacheFromDisk();
+
+        // Rebuild visible overlays
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player != null && OreHeatmapConfig.ENABLED.get()) {
+            Level level = player.level();
+            ResourceKey<Level> dim = level.dimension();
+            ChunkPos pChunk = new ChunkPos(player.blockPosition());
+            int radius = calculateVisibleRadius();
+            updateOverlays(level, dim, currentOreCounts, pChunk, radius);
+
+            player.displayClientMessage(Component.literal("Switched to Overlay " + activeOverlaySlot), true);
+        }
+
+        OreHeatmapMod.LOGGER.info("Cycled to overlay slot {}", activeOverlaySlot);
+    }
+    private boolean isOverlayConfigured(int slot) {
+        return switch (slot) {
+            case 1 -> !OreHeatmapConfig.TRACKED_ORES.get().isEmpty();
+            case 2 -> !OreHeatmapConfig.TRACKED_ORES2.get().isEmpty();
+            case 3 -> !OreHeatmapConfig.TRACKED_ORES3.get().isEmpty();
+            case 4 -> !OreHeatmapConfig.TRACKED_ORES4.get().isEmpty();
+            case 5 -> !OreHeatmapConfig.TRACKED_ORES5.get().isEmpty();
+            default -> false;
+        };
+    }
+    //****
     private void processRescanBatch(Level level, ResourceKey<Level> dimension) {
         String dimKey = dimension.location().toString();
-        Map<String, Integer> oreCounts = dimensionOreCounts.get(dimKey);
+        Map<String, Integer> oreCounts = currentOreCounts;
         if (oreCounts == null) {
             OreHeatmapMod.LOGGER.warn("processRescanBatch: No oreCounts map for dimension {} - stopping", dimKey);
             isRescanning = false;
@@ -635,8 +718,10 @@ public class OreHeatmapOverlayManager {
         if (OreHeatmapConfig.ENABLED.get()) {
             ChunkPos playerChunk = new ChunkPos(Minecraft.getInstance().player.blockPosition());
             int visibleRadius = calculateVisibleRadius();
-            updateOverlays(level, dimension, dimensionOreCounts.get(dimension.location().toString()), playerChunk, visibleRadius);
+            updateOverlays(level, dimension, currentOreCounts, playerChunk, visibleRadius);
         }
+
+        saveCacheToDisk();
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
