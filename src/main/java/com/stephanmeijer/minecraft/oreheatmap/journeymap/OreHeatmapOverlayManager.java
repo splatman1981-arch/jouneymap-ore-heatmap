@@ -683,17 +683,16 @@ public class OreHeatmapOverlayManager {
         // Rebuild display
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
-        if (player != null && OreHeatmapConfig.ENABLED.get()) {
+        if (mc.player != null && OreHeatmapConfig.ENABLED.get()) {
             Level level = player.level();
             ResourceKey<Level> dim = level.dimension();
             ChunkPos pChunk = new ChunkPos(player.blockPosition());
             int radius = calculateVisibleRadius();
             updateOverlays(level, dim, currentOreCounts, pChunk, radius);
 
-            player.displayClientMessage(Component.literal("Switched to Overlay " + activeOverlaySlot), true);
+            mc.player.displayClientMessage(Component.literal("Switched to Overlay " + activeOverlaySlot), true);
+            OreHeatmapMod.LOGGER.info("Cycled to overlay slot {}", activeOverlaySlot);
         }
-
-        OreHeatmapMod.LOGGER.info("Cycled to overlay slot {}", activeOverlaySlot);
     }
 
     private void recalculateMaxOreCountForActiveSlot() {

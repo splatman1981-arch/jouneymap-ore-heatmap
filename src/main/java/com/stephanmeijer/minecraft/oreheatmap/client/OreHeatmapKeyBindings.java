@@ -111,10 +111,10 @@ public class OreHeatmapKeyBindings {
                 OreHeatmapPlugin plugin = OreHeatmapPlugin.getInstance();
                 if (plugin != null && plugin.getOverlayManager() != null) {
                     plugin.getOverlayManager().cycleOverlay();
-                    Minecraft mc = Minecraft.getInstance();
-                    if (mc.player != null) {
-                        mc.player.displayClientMessage(Component.literal("Switched to next overlay"), true);
-                    }
+                   // Minecraft mc = Minecraft.getInstance();
+                    //if (mc.player != null) {
+                    //    mc.player.displayClientMessage(Component.literal("Switched to next overlay"), true);
+                    //}
                 }
             }
         }
