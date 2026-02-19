@@ -15,6 +15,9 @@ public class HeatmapSlotsScreen extends Screen {
     private final EditBox[] trackedFields = new EditBox[SLOT_COUNT];
     private final Button[] resetButtons = new Button[SLOT_COUNT];
     private int selectedSlot = OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.get() - 1; // 0-based index
+    private Button trackingToggleButton;
+    private boolean trackingEnabled = OreHeatmapConfig.ENABLED.get();
+    private final Button[] checkboxButtons = new Button[SLOT_COUNT];
 
     public HeatmapSlotsScreen() {
         super(Component.literal("Heatmap Slots"));
@@ -28,23 +31,28 @@ public class HeatmapSlotsScreen extends Screen {
         int startY = 40;
         int rowHeight = 30;
 
+        this.clearWidgets();   // Important: clear old widgets first
+
         for (int i = 0; i < SLOT_COUNT; i++) {
             int slotNum = i + 1;
             int y = startY + i * rowHeight;
 
             // Checkbox (active slot)
-            int finalI = i;
-            addRenderableWidget(Button.builder(
-                            Component.literal(selectedSlot + 1 == slotNum ? "☑" : "☐"),
+            final int finalI = i;
+            Button checkbox = Button.builder(
+                            Component.literal(selectedSlot == finalI ? "☑" : "☐"),
                             button -> {
                                 selectedSlot = finalI;
                                 updateCheckboxes();
                                 OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.set(slotNum);
                             })
                     .bounds(centerX - 180, y, 20, 20)
-                    .build());
+                    .build();
 
-            // Text field for tracked ores
+            checkboxButtons[i] = checkbox;
+            addRenderableWidget(checkbox);
+
+            // Text field
             EditBox field = new EditBox(this.font, centerX - 150, y, 200, 20, Component.literal("Overlay " + slotNum));
             field.setValue(getTrackedString(slotNum));
             field.setMaxLength(200);
@@ -77,12 +85,13 @@ public class HeatmapSlotsScreen extends Screen {
                         })
                 .bounds(centerX + 20, this.height - 40, 120, 20)
                 .build());
+
+        updateCheckboxes();   // Initial update
     }
 
     private void updateCheckboxes() {
         for (int i = 0; i < SLOT_COUNT; i++) {
-            Button btn = (Button) this.renderables.get(i * 3); // rough index - adjust if needed
-            btn.setMessage(Component.literal(selectedSlot == i ? "☑" : "☐"));
+            checkboxButtons[i].setMessage(Component.literal(selectedSlot == i ? "☑" : "☐"));
         }
     }
 
@@ -106,6 +115,7 @@ public class HeatmapSlotsScreen extends Screen {
 
         OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.set(selectedSlot + 1);
         OreHeatmapMod.LOGGER.info("Saved heatmap slots config");
+        OreHeatmapConfig.ENABLED.set(trackingEnabled);
     }
 
     private void resetSlot(int slot) {
