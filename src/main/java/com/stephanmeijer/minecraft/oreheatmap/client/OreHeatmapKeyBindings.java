@@ -46,7 +46,7 @@ public class OreHeatmapKeyBindings {
                 KEY_RESET_CACHE,
                 KeyConflictContext.IN_GAME,
                 InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_P,  // Default to 'P', change as needed
+                GLFW.GLFW_KEY_P,
                 KEY_CATEGORY
         );
         event.register(resetCacheKey);
@@ -55,7 +55,7 @@ public class OreHeatmapKeyBindings {
                 KEY_CYCLE_OVERLAY,
                 KeyConflictContext.IN_GAME,
                 InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_I,  // Default to 'I', change as needed
+                GLFW.GLFW_KEY_I,
                 KEY_CATEGORY
         );
         event.register(cycleOverlayKey);
@@ -111,10 +111,6 @@ public class OreHeatmapKeyBindings {
                 OreHeatmapPlugin plugin = OreHeatmapPlugin.getInstance();
                 if (plugin != null && plugin.getOverlayManager() != null) {
                     plugin.getOverlayManager().cycleOverlay();
-                   // Minecraft mc = Minecraft.getInstance();
-                    //if (mc.player != null) {
-                    //    mc.player.displayClientMessage(Component.literal("Switched to next overlay"), true);
-                    //}
                 }
             }
         }

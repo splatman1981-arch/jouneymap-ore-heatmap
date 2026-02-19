@@ -661,40 +661,63 @@ public class OreHeatmapOverlayManager {
         OreHeatmapMod.LOGGER.info("ResetCache: Started for slot {} | radius={} | queued={} chunks", activeOverlaySlot, rescanRadius, queued);
     }
     public void cycleOverlay() {
-        int original = activeOverlaySlot;
-        int attempts = 0;
-
-        do {
-            activeOverlaySlot = (activeOverlaySlot % 5) + 1;
-            attempts++;
-            if (attempts > 5) {
-                activeOverlaySlot = original;
-                Minecraft.getInstance().player.displayClientMessage(Component.literal("No other configured overlays!"), true);
-                return;
-            }
-        } while (slotTrackedBlocks.get(activeOverlaySlot).isEmpty() && slotTrackedTags.get(activeOverlaySlot).isEmpty());
-
-        // Switch active cache
-        currentOreCounts = slotOreCounts.computeIfAbsent(activeOverlaySlot, k -> new ConcurrentHashMap<>());
-
-        // Reset max for new slot
-        recalculateMaxOreCountForActiveSlot();
-
-        // Rebuild display
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
-        if (mc.player != null && OreHeatmapConfig.ENABLED.get()) {
+        if (player == null) return;
+
+        int originalSlot = activeOverlaySlot;
+
+        // Cycle: 0 (off) → 1 → 2 → 3 → 4 → 5 → 0 …
+        do {
+            activeOverlaySlot++;
+            if (activeOverlaySlot > 5) {
+                activeOverlaySlot = 0;
+            }
+
+            // Safety: prevent infinite loop if somehow broken
+            if (activeOverlaySlot == originalSlot && activeOverlaySlot != 0) {
+                activeOverlaySlot = 0;
+                break;
+            }
+
+            // If we landed on slot 0 (off) or a configured slot → stop cycling
+            if (activeOverlaySlot == 0 || isSlotConfigured(activeOverlaySlot)) {
+                break;
+            }
+        } while (true);
+
+        OreHeatmapMod.LOGGER.debug("Cycling to slot {}", activeOverlaySlot);
+
+        if (activeOverlaySlot == 0) {
+            // === OFF STATE ===
+            OreHeatmapConfig.ENABLED.set(false);
+            clearAllOverlays();
+            player.displayClientMessage(Component.literal("Heatmap disabled"), true);
+        } else {
+            // === NORMAL SLOT ===
+            OreHeatmapConfig.ENABLED.set(true);
+
+            currentOreCounts = slotOreCounts.computeIfAbsent(activeOverlaySlot, k -> new ConcurrentHashMap<>());
+            recalculateMaxOreCountForActiveSlot();
+
+            // Rebuild the visible heatmap
             Level level = player.level();
             ResourceKey<Level> dim = level.dimension();
             ChunkPos pChunk = new ChunkPos(player.blockPosition());
             int radius = calculateVisibleRadius();
             updateOverlays(level, dim, currentOreCounts, pChunk, radius);
 
-            mc.player.displayClientMessage(Component.literal("Switched to Overlay " + activeOverlaySlot), true);
-            OreHeatmapMod.LOGGER.info("Cycled to overlay slot {}", activeOverlaySlot);
+            player.displayClientMessage(Component.literal("Switched to Overlay " + activeOverlaySlot), true);
         }
+
+        OreHeatmapMod.LOGGER.info("Cycled to slot {}", activeOverlaySlot);
     }
 
+    private boolean isSlotConfigured(int slot) {
+        Set<ResourceLocation> blocks = slotTrackedBlocks.getOrDefault(slot, Set.of());
+        Set<TagKey<Block>> tags   = slotTrackedTags.getOrDefault(slot, Set.of());
+        return !blocks.isEmpty() || !tags.isEmpty();
+    }
     private void recalculateMaxOreCountForActiveSlot() {
         int max = 1;
         for (int c : currentOreCounts.values()) {
