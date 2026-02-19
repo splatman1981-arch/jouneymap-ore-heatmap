@@ -1,27 +1,37 @@
 package com.stephanmeijer.minecraft.oreheatmap.client;
-
-import com.stephanmeijer.minecraft.oreheatmap.OreHeatmapConfig;
 import com.stephanmeijer.minecraft.oreheatmap.OreHeatmapMod;
+import com.stephanmeijer.minecraft.oreheatmap.OreHeatmapConfig;
+import com.stephanmeijer.minecraft.oreheatmap.journeymap.OreHeatmapOverlayManager;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import java.util.Arrays;
 import java.util.List;
+import java.nio.file.Path;
+
 public class HeatmapSlotsScreen extends Screen {
 
     private static final int SLOT_COUNT = 5;
     private final EditBox[] trackedFields = new EditBox[SLOT_COUNT];
     private final Button[] resetButtons = new Button[SLOT_COUNT];
+    private final OreHeatmapOverlayManager manager;
     private int selectedSlot = OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.get() - 1; // 0-based index
     private Button trackingToggleButton;
     private boolean trackingEnabled = OreHeatmapConfig.ENABLED.get();
     private final Button[] checkboxButtons = new Button[SLOT_COUNT];
 
-    public HeatmapSlotsScreen() {
+    public HeatmapSlotsScreen(OreHeatmapOverlayManager manager) {
         super(Component.literal("Heatmap Slots"));
+        this.manager = manager;
     }
+
 
     @Override
     protected void init() {
@@ -32,6 +42,14 @@ public class HeatmapSlotsScreen extends Screen {
         int rowHeight = 30;
 
         this.clearWidgets();   // Important: clear old widgets first
+
+        // Title labels
+        for (int i = 0; i < SLOT_COUNT; i++) {
+            int y = startY + i * rowHeight - 10;
+            addRenderableOnly(new net.minecraft.client.gui.components.StringWidget(
+                    centerX - 150, y, 200, 10,
+                    Component.literal("Overlay " + (i+1)), this.font));
+        }
 
         for (int i = 0; i < SLOT_COUNT; i++) {
             int slotNum = i + 1;
@@ -107,18 +125,39 @@ public class HeatmapSlotsScreen extends Screen {
     }
 
     private void saveAllSlots() {
-        OreHeatmapConfig.TRACKED_ORES.set(List.of(trackedFields[0].getValue().split(",")));
-        OreHeatmapConfig.TRACKED_ORES2.set(List.of(trackedFields[1].getValue().split(",")));
-        OreHeatmapConfig.TRACKED_ORES3.set(List.of(trackedFields[2].getValue().split(",")));
-        OreHeatmapConfig.TRACKED_ORES4.set(List.of(trackedFields[3].getValue().split(",")));
-        OreHeatmapConfig.TRACKED_ORES5.set(List.of(trackedFields[4].getValue().split(",")));
+        // Save text field values to config
+        OreHeatmapConfig.TRACKED_ORES.set(Arrays.asList(trackedFields[0].getValue().split(",")));
+        OreHeatmapConfig.TRACKED_ORES2.set(Arrays.asList(trackedFields[1].getValue().split(",")));
+        OreHeatmapConfig.TRACKED_ORES3.set(Arrays.asList(trackedFields[2].getValue().split(",")));
+        OreHeatmapConfig.TRACKED_ORES4.set(Arrays.asList(trackedFields[3].getValue().split(",")));
+        OreHeatmapConfig.TRACKED_ORES5.set(Arrays.asList(trackedFields[4].getValue().split(",")));
 
+        // Save active slot
         OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.set(selectedSlot + 1);
-        OreHeatmapMod.LOGGER.info("Saved heatmap slots config");
-        OreHeatmapConfig.ENABLED.set(trackingEnabled);
+
+        // Reload everything through the manager
+        manager.loadAllTrackedOres();
+        manager.loadCacheFromDisk();
+        manager.recalculateMaxOreCountForActiveSlot();
+
+        // Refresh the display if enabled
+        if (OreHeatmapConfig.ENABLED.get()) {
+            Minecraft mc = Minecraft.getInstance();
+            LocalPlayer player = mc.player;
+            if (player != null) {
+                Level level = player.level();
+                ResourceKey<Level> dim = level.dimension();
+                ChunkPos pChunk = new ChunkPos(player.blockPosition());
+                int radius = manager.calculateVisibleRadius();   // use manager's method
+                manager.updateOverlays(level, dim, manager.currentOreCounts, pChunk, radius);  // note: currentOreCounts is package-private for now
+            }
+        }
+
+        OreHeatmapMod.LOGGER.info("Saved and applied heatmap slots config");
     }
 
     private void resetSlot(int slot) {
+        // Clear config entry
         switch (slot) {
             case 1 -> OreHeatmapConfig.TRACKED_ORES.set(List.of(""));
             case 2 -> OreHeatmapConfig.TRACKED_ORES2.set(List.of(""));
@@ -126,10 +165,19 @@ public class HeatmapSlotsScreen extends Screen {
             case 4 -> OreHeatmapConfig.TRACKED_ORES4.set(List.of(""));
             case 5 -> OreHeatmapConfig.TRACKED_ORES5.set(List.of(""));
         }
+
         trackedFields[slot - 1].setValue("");
-        if (slot == OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.get()) {
-            this.minecraft.player.displayClientMessage(Component.literal("Reset Overlay " + slot), true);
-        }
+
+        manager.resetCacheForSlot(slot);
+
+        Minecraft.getInstance().player.displayClientMessage(Component.literal("Reset Overlay " + slot), true);
+    }
+
+    // Helper - get path for any slot
+    private Path getCacheFilePathForSlot(int slot) {
+        if (manager.cacheDirectory == null || manager.currentWorldId == null) return null;
+        String fileName = "overlay" + slot + ".json";
+        return manager.cacheDirectory.resolve(manager.currentWorldId).resolve(fileName);
     }
 
     private void resetAllSlots() {

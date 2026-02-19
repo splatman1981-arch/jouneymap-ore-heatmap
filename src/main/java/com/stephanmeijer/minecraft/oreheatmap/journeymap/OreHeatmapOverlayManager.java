@@ -47,7 +47,7 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
  */
 public class OreHeatmapOverlayManager {
     private int activeOverlaySlot = OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.get();
-    private Map<String, Integer> currentOreCounts = new ConcurrentHashMap<>();
+    public Map<String, Integer> currentOreCounts = new ConcurrentHashMap<>();
     private final IClientAPI jmAPI;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -80,10 +80,10 @@ public class OreHeatmapOverlayManager {
     private static final int SAVE_INTERVAL = 600; // Save every 30 seconds (600 ticks)
 
     private ResourceKey<Level> currentDimension;
-    private String currentWorldId;
+    public String currentWorldId;
     private boolean wasEnabled;  // Track previous enabled state
     private boolean cacheLoadFailed;  // Track if cache failed to load
-    private Path cacheDirectory;  // Cached directory path
+    public Path cacheDirectory;  // Cached directory path
 
     // Background rescan state
     private boolean isRescanning = false;
@@ -109,7 +109,7 @@ public class OreHeatmapOverlayManager {
         }
     }
 
-    private void loadAllTrackedOres() {
+    public void loadAllTrackedOres() {
         slotTrackedBlocks.clear();
         slotTrackedTags.clear();
 
@@ -166,7 +166,7 @@ public class OreHeatmapOverlayManager {
         return cacheDirectory.resolve(currentWorldId).resolve(fileName);
     }
 
-    private void loadCacheFromDisk() {
+    public void loadCacheFromDisk() {
         cacheLoadFailed = false;
 
         Path cacheFile = getCacheFilePath();
@@ -399,7 +399,7 @@ public class OreHeatmapOverlayManager {
         maxOreCount.set(max);
     }
 
-    private int calculateVisibleRadius() {
+    public int calculateVisibleRadius() {
         Minecraft mc = Minecraft.getInstance();
         int mcRadius = mc.options.renderDistance().get();
 
@@ -454,8 +454,8 @@ public class OreHeatmapOverlayManager {
         return false;
     }
 
-    private void updateOverlays(Level level, ResourceKey<Level> dim, Map<String, Integer> oreCounts,
-                                ChunkPos center, int radius) {
+    public void updateOverlays(Level level, ResourceKey<Level> dim, Map<String, Integer> oreCounts,
+                               ChunkPos center, int radius) {
         float maxOpacity = (float) (double) OreHeatmapConfig.OVERLAY_OPACITY.get();
         int currentMax = maxOreCount.get();
 
@@ -609,7 +609,24 @@ public class OreHeatmapOverlayManager {
         }
         activeOverlays.clear();
     }
+    public void resetCacheForSlot(int slot) {
+        Path cacheFile = getCacheFilePathForSlot(slot);   // we'll make this method public too
+        if (cacheFile != null && Files.exists(cacheFile)) {
+            try {
+                Files.delete(cacheFile);
+                OreHeatmapMod.LOGGER.info("Deleted cache for slot {}", slot);
+            } catch (IOException e) {
+                OreHeatmapMod.LOGGER.error("Failed to delete cache for slot {}", slot, e);
+            }
+        }
+    }
 
+    // Make this one public too
+    public Path getCacheFilePathForSlot(int slot) {
+        if (cacheDirectory == null || currentWorldId == null) return null;
+        String fileName = "overlay" + slot + ".json";
+        return cacheDirectory.resolve(currentWorldId).resolve(fileName);
+    }
     public void resetCache() {
         if (!ensureCorrectWorld()) return;
 
@@ -718,7 +735,7 @@ public class OreHeatmapOverlayManager {
         Set<TagKey<Block>> tags   = slotTrackedTags.getOrDefault(slot, Set.of());
         return !blocks.isEmpty() || !tags.isEmpty();
     }
-    private void recalculateMaxOreCountForActiveSlot() {
+    public void recalculateMaxOreCountForActiveSlot() {
         int max = 1;
         for (int c : currentOreCounts.values()) {
             max = Math.max(max, c);

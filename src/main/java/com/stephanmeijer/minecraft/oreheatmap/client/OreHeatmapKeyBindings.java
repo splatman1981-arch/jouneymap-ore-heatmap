@@ -75,9 +75,10 @@ public class OreHeatmapKeyBindings {
             }
 
             while (toggleOverlayKey.consumeClick()) {
-                Minecraft mc = Minecraft.getInstance();
-                if (mc.player != null) {
-                    mc.setScreen(new HeatmapSlotsScreen());
+                OreHeatmapPlugin plugin = OreHeatmapPlugin.getInstance();
+                if (plugin != null && plugin.getOverlayManager() != null) {
+                    Minecraft mc = Minecraft.getInstance();
+                    mc.setScreen(new HeatmapSlotsScreen(plugin.getOverlayManager()));
                 }
             }
 
