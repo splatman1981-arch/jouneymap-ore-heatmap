@@ -1,12 +1,10 @@
 package com.stephanmeijer.minecraft.oreheatmap.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import com.stephanmeijer.minecraft.oreheatmap.OreHeatmapConfig;
 import com.stephanmeijer.minecraft.oreheatmap.OreHeatmapMod;
 import com.stephanmeijer.minecraft.oreheatmap.journeymap.OreHeatmapPlugin;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -77,28 +75,10 @@ public class OreHeatmapKeyBindings {
             }
 
             while (toggleOverlayKey.consumeClick()) {
-                // Toggle the enabled state
-                boolean newState = !OreHeatmapConfig.ENABLED.get();
-                OreHeatmapConfig.ENABLED.set(newState);
-
-                // Clear overlays if disabled
-                if (!newState) {
-                    OreHeatmapPlugin plugin = OreHeatmapPlugin.getInstance();
-                    if (plugin != null && plugin.getOverlayManager() != null) {
-                        plugin.getOverlayManager().clearAllOverlays();
-                    }
-                }
-
-                // Show feedback message to player
                 Minecraft mc = Minecraft.getInstance();
                 if (mc.player != null) {
-                    String messageKey = newState ?
-                            "message." + OreHeatmapMod.MODID + ".overlay_enabled" :
-                            "message." + OreHeatmapMod.MODID + ".overlay_disabled";
-                    mc.player.displayClientMessage(Component.translatable(messageKey), true);
+                    mc.setScreen(new HeatmapSlotsScreen());
                 }
-
-                OreHeatmapMod.LOGGER.debug("Ore Heatmap overlay toggled: {}", newState);
             }
 
             while (resetCacheKey.consumeClick()) {
