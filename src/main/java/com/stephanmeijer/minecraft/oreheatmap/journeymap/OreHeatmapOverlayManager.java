@@ -677,6 +677,7 @@ public class OreHeatmapOverlayManager {
         player.displayClientMessage(Component.literal("Reset Overlay " + activeOverlaySlot + "! Background rescan started..."), true);
         OreHeatmapMod.LOGGER.info("ResetCache: Started for slot {} | radius={} | queued={} chunks", activeOverlaySlot, rescanRadius, queued);
     }
+
     public void cycleOverlay() {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
@@ -728,6 +729,32 @@ public class OreHeatmapOverlayManager {
         }
 
         OreHeatmapMod.LOGGER.info("Cycled to slot {}", activeOverlaySlot);
+    }
+
+    public void setActiveSlot(int slot) {
+        if (slot < 0 || slot > 5) return;
+
+        activeOverlaySlot = slot;
+
+        if (slot == 0) {
+            OreHeatmapConfig.ENABLED.set(false);
+            clearAllOverlays();
+        } else {
+            OreHeatmapConfig.ENABLED.set(true);
+            currentOreCounts = slotOreCounts.computeIfAbsent(slot, k -> new ConcurrentHashMap<>());
+            recalculateMaxOreCountForActiveSlot();
+
+            // Refresh display
+            Minecraft mc = Minecraft.getInstance();
+            LocalPlayer player = mc.player;
+            if (player != null) {
+                Level level = player.level();
+                ResourceKey<Level> dim = level.dimension();
+                ChunkPos pChunk = new ChunkPos(player.blockPosition());
+                int radius = calculateVisibleRadius();
+                updateOverlays(level, dim, currentOreCounts, pChunk, radius);
+            }
+        }
     }
 
     private boolean isSlotConfigured(int slot) {

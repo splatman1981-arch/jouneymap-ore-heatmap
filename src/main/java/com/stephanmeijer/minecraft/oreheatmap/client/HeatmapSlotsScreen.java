@@ -79,11 +79,8 @@ public class HeatmapSlotsScreen extends Screen {
 
             // Reset button
             addRenderableWidget(Button.builder(
-                            Component.literal("Reset"),
-                            button -> {
-                                resetSlot(slotNum);
-                                field.setValue("");
-                            })
+                            Component.literal("Update"),
+                            button -> updateSlot(slotNum))
                     .bounds(centerX + 60, y, 80, 20)
                     .build());
         }
@@ -111,8 +108,51 @@ public class HeatmapSlotsScreen extends Screen {
         for (int i = 0; i < SLOT_COUNT; i++) {
             checkboxButtons[i].setMessage(Component.literal(selectedSlot == i ? "☑" : "☐"));
         }
-    }
 
+        // Switch the active overlay in the manager
+        if (selectedSlot >= 0) {
+            manager.setActiveSlot(selectedSlot + 1);   // we'll add this method next
+        }
+    }
+    private void updateSlot(int slot) {
+        // Save current text field to config
+        List<String> newList = Arrays.asList(trackedFields[slot - 1].getValue().trim().split(","));
+        switch (slot) {
+            case 1 -> OreHeatmapConfig.TRACKED_ORES.set(newList);
+            case 2 -> OreHeatmapConfig.TRACKED_ORES2.set(newList);
+            case 3 -> OreHeatmapConfig.TRACKED_ORES3.set(newList);
+            case 4 -> OreHeatmapConfig.TRACKED_ORES4.set(newList);
+            case 5 -> OreHeatmapConfig.TRACKED_ORES5.set(newList);
+        }
+
+        // Force save to disk
+        OreHeatmapConfig.SPEC.save();
+
+        // Delete old cache file
+        manager.resetCacheForSlot(slot);
+
+        // Reload tracked ores
+        manager.loadAllTrackedOres();
+
+        // If this is the active slot, refresh display immediately
+        if (slot == OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.get() && OreHeatmapConfig.ENABLED.get()) {
+            manager.loadCacheFromDisk();
+            manager.recalculateMaxOreCountForActiveSlot();
+
+            Minecraft mc = Minecraft.getInstance();
+            LocalPlayer player = mc.player;
+            if (player != null) {
+                Level level = player.level();
+                ResourceKey<Level> dim = level.dimension();
+                ChunkPos pChunk = new ChunkPos(player.blockPosition());
+                int radius = manager.calculateVisibleRadius();
+                manager.updateOverlays(level, dim, manager.currentOreCounts, pChunk, radius);
+            }
+        }
+
+        Minecraft.getInstance().player.displayClientMessage(Component.literal("Updated & rescanned Overlay " + slot), true);
+        OreHeatmapMod.LOGGER.info("Updated and rescanned slot {}", slot);
+    }
     private String getTrackedString(int slot) {
         return switch (slot) {
             case 1 -> String.join(",", OreHeatmapConfig.TRACKED_ORES.get());
@@ -135,6 +175,9 @@ public class HeatmapSlotsScreen extends Screen {
         // Save active slot
         OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.set(selectedSlot + 1);
 
+        // CRITICAL: Actually write the config to disk
+        OreHeatmapConfig.SPEC.save();
+
         // Reload everything through the manager
         manager.loadAllTrackedOres();
         manager.loadCacheFromDisk();
@@ -148,8 +191,8 @@ public class HeatmapSlotsScreen extends Screen {
                 Level level = player.level();
                 ResourceKey<Level> dim = level.dimension();
                 ChunkPos pChunk = new ChunkPos(player.blockPosition());
-                int radius = manager.calculateVisibleRadius();   // use manager's method
-                manager.updateOverlays(level, dim, manager.currentOreCounts, pChunk, radius);  // note: currentOreCounts is package-private for now
+                int radius = manager.calculateVisibleRadius();
+                manager.updateOverlays(level, dim, manager.currentOreCounts, pChunk, radius);
             }
         }
 

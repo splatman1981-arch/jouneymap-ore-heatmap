@@ -86,9 +86,7 @@ public class OreHeatmapConfig {
                 ), OreHeatmapConfig::validateOreEntry);
         TRACKED_ORES4 = BUILDER
                 .comment("List of ores to track for 4th overlay.")
-                .defineListAllowEmpty("trackedOres4", List.of(
-                        ""
-                ), OreHeatmapConfig::validateOreEntry);
+                .defineListAllowEmpty("trackedOres4", List.of(), OreHeatmapConfig::validateOreEntry);
         TRACKED_ORES5 = BUILDER
                 .comment("List of ores to track for 5th overlay.")
                 .defineListAllowEmpty("trackedOres5", List.of(
