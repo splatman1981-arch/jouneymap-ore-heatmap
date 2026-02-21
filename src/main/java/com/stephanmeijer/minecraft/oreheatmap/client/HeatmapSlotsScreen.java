@@ -9,6 +9,8 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.NotNull;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -119,13 +121,15 @@ public class HeatmapSlotsScreen extends Screen {
             manager.resetCache();
             player.displayClientMessage(Component.literal("Saved & started full rescan for all overlays"), true);
         } else {
-            player.displayClientMessage(Component.literal("Saved config (scanning disabled)"), true);
+            if (player != null) {
+                player.displayClientMessage(Component.literal("Saved config (scanning disabled)"), true);
+            }
         }
         OreHeatmapMod.LOGGER.info("Saved config and initiated full rescan");
     }
 
     @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
         guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xFFFFFF);
         super.render(guiGraphics, mouseX, mouseY, partialTick);

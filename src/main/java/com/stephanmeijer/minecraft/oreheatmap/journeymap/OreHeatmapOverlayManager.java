@@ -75,8 +75,6 @@ public class OreHeatmapOverlayManager {
 
     // Background rescan state
     private boolean isRescanning = false;
-    private ChunkPos rescanCenter;
-    private int rescanRadius;
     private final Set<ChunkPos> pendingChunks = new HashSet<>();
     private int chunksScanned;
 
@@ -184,6 +182,7 @@ public class OreHeatmapOverlayManager {
             Map<String, Map<String, Integer>> loaded = GSON.fromJson(reader, type);
             if (loaded != null) {
                 currentOreCounts.clear();
+                assert Minecraft.getInstance().level != null;
                 String dimKey = Minecraft.getInstance().level.dimension().location().toString();
                 currentOreCounts.putAll(loaded.getOrDefault(dimKey, new ConcurrentHashMap<>()));
                 recalculateMaxOreCount();
@@ -371,7 +370,7 @@ public class OreHeatmapOverlayManager {
             Map<String, Integer> oreCounts = currentOreCounts;
 
             if (enabled && oreCounts != null) {
-                updateOverlays(level, dim, oreCounts);
+                updateOverlays(dim, oreCounts);
             } else if (wasEnabled) {
                 clearAllOverlays();
             }
@@ -399,7 +398,7 @@ public class OreHeatmapOverlayManager {
         OreHeatmapMod.LOGGER.debug("calculateVisibleRadius: {} ", radius);
         return radius;
     }
-    public void updateOverlays(Level level, ResourceKey<Level> dim, Map<String, Integer> oreCounts) {
+    public void updateOverlays(ResourceKey<Level> dim, Map<String, Integer> oreCounts) {
         float maxOpacity = (float) (double) OreHeatmapConfig.OVERLAY_OPACITY.get();
         int currentMax = maxOreCount.get();
 
@@ -578,10 +577,6 @@ public class OreHeatmapOverlayManager {
         LocalPlayer player = mc.player;
         if (player == null) return;
 
-        Level level = player.level();
-        ResourceKey<Level> dimension = level.dimension();
-        String dimKey = dimension.location().toString();
-
         loadAllTrackedOres();
 
         // Clear only current slot's data
@@ -600,8 +595,8 @@ public class OreHeatmapOverlayManager {
         }
 
         // Start background rescan for current slot
-        rescanRadius = calculateVisibleRadius() + 2;
-        rescanCenter = new ChunkPos(player.blockPosition());
+        int rescanRadius = calculateVisibleRadius() + 2;
+        ChunkPos rescanCenter = new ChunkPos(player.blockPosition());
         pendingChunks.clear();
 
         int queued = 0;
@@ -663,9 +658,13 @@ public class OreHeatmapOverlayManager {
             recalculateMaxOreCountForActiveSlot();
 
             // Rebuild the visible heatmap
-            Level level = player.level();
-            ResourceKey<Level> dim = level.dimension();
-            updateOverlays(level, dim, currentOreCounts);
+            ResourceKey<Level> dim;
+            try (Level level = player.level()) {
+                dim = level.dimension();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            updateOverlays(dim, currentOreCounts);
 
             player.displayClientMessage(Component.literal("Switched to Overlay " + activeOverlaySlot), true);
         }
@@ -700,7 +699,7 @@ public class OreHeatmapOverlayManager {
         }
 
         if (pendingChunks.isEmpty()) {
-            finishRescan(level, dimension);
+            finishRescan(dimension);
             return;
         }
 
@@ -711,8 +710,6 @@ public class OreHeatmapOverlayManager {
         OreHeatmapMod.LOGGER.debug("processRescanBatch: Starting batch of {} chunks (remaining: {})", batchSize, pendingChunks.size());
 
         int batchScanned = 0;
-        int loadedZero = 0;
-        int notLoaded = 0;
 
         for (ChunkPos cp : batch) {
             String key = cp.x + "," + cp.z;
@@ -728,11 +725,9 @@ public class OreHeatmapOverlayManager {
                     OreHeatmapMod.LOGGER.debug("processRescanBatch: Scanned & saved chunk {},{} → {} ores (slot {})",
                             cp.x, cp.z, count, activeOverlaySlot);
                 } else {
-                    loadedZero++;
                     OreHeatmapMod.LOGGER.debug("processRescanBatch: Chunk {},{} loaded but 0 ores", cp.x, cp.z);
                 }
             } else {
-                notLoaded++;
                 OreHeatmapMod.LOGGER.debug("processRescanBatch: Chunk {},{} not loaded yet", cp.x, cp.z);
             }
         }
@@ -746,16 +741,16 @@ public class OreHeatmapOverlayManager {
         }
 
         if (pendingChunks.isEmpty()) {
-            finishRescan(level, dimension);
+            finishRescan(dimension);
         }
     }
 
-    private void finishRescan(Level level, ResourceKey<Level> dimension) {
+    private void finishRescan(ResourceKey<Level> dimension) {
         isRescanning = false;
         recalculateMaxOreCountForActiveSlot();  // Update color scale
 
         if (OreHeatmapConfig.ENABLED.get()) {
-            updateOverlays(level, dimension, currentOreCounts);
+            updateOverlays(dimension, currentOreCounts);
             OreHeatmapMod.LOGGER.debug("finishRescan: Refreshed overlays for slot {}", activeOverlaySlot);
         } else {
             clearAllOverlays();
