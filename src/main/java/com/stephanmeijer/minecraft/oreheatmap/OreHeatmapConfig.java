@@ -51,8 +51,8 @@ public class OreHeatmapConfig {
                 .defineInRange("rescanChunksPerTick", 1, 1, 200);
 
         ACTIVE_OVERLAY_SLOT = BUILDER
-                .comment("Currently active overlay slot (1-5). 0 = default overlay.")
-                .defineInRange("activeOverlaySlot", 0, 0, 5);
+                .comment("Currently active overlay slot (1-5). 1 = default overlay.")
+                .defineInRange("activeOverlaySlot", 1, 1, 5);
 
         BUILDER.pop();
 
