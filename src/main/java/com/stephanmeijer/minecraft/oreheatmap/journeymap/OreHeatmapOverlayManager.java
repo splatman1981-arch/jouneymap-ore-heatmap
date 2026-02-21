@@ -280,6 +280,7 @@ public class OreHeatmapOverlayManager {
 
     @SubscribeEvent
     public void onChunkLoad(ChunkEvent.Load event) {
+        if (!OreHeatmapConfig.ENABLED.get()) return;
         if (!event.getLevel().isClientSide()) return;
         if (!(event.getLevel() instanceof Level level)) return;
         if (!ensureCorrectWorld()) return;
@@ -346,6 +347,13 @@ public class OreHeatmapOverlayManager {
     @SubscribeEvent
     public void onPlayerTick(PlayerTickEvent.Post event) {
         if (!(event.getEntity() instanceof LocalPlayer player)) return;
+        if (!OreHeatmapConfig.ENABLED.get()) {
+            if (wasEnabled) {
+                clearAllOverlays();
+                wasEnabled = false;
+            }
+            return;
+        }
         if (!ensureCorrectWorld()) return;
 
         if (cacheLoadFailed) {
@@ -770,10 +778,15 @@ public class OreHeatmapOverlayManager {
         maxOreCount.set(max);
     }
     private void processRescanBatch(Level level, ResourceKey<Level> dimension) {
+        if (!OreHeatmapConfig.ENABLED.get()) {
+            isRescanning = false;
+            return;
+        }
+
         String dimKey = dimension.location().toString();
         Map<String, Integer> oreCounts = currentOreCounts;
         if (oreCounts == null) {
-            OreHeatmapMod.LOGGER.warn("processRescanBatch: No oreCounts map for dimension {} - stopping", dimKey);
+            OreHeatmapMod.LOGGER.warn("processRescanBatch: No oreCounts map - stopping");
             isRescanning = false;
             return;
         }
@@ -797,19 +810,22 @@ public class OreHeatmapOverlayManager {
             String key = cp.x + "," + cp.z;
 
             if (level.hasChunk(cp.x, cp.z)) {
-                int count = scanChunk(level, cp);
+                // ← CHANGED: Use the correct per-slot scanner for the active overlay
+                int count = scanChunkForSlot(level, cp, activeOverlaySlot);
+
                 if (count > 0) {
                     oreCounts.put(key, count);
                     maxOreCount.updateAndGet(cur -> Math.max(cur, count));
                     batchScanned++;
-                    OreHeatmapMod.LOGGER.debug("processRescanBatch: Scanned & saved chunk {},{} → {} ores", cp.x, cp.z, count);
+                    OreHeatmapMod.LOGGER.debug("processRescanBatch: Scanned & saved chunk {},{} → {} ores (slot {})",
+                            cp.x, cp.z, count, activeOverlaySlot);
                 } else {
                     loadedZero++;
-                    OreHeatmapMod.LOGGER.debug("processRescanBatch: Chunk {},{} loaded but 0 ores - not cached", cp.x, cp.z);
+                    OreHeatmapMod.LOGGER.debug("processRescanBatch: Chunk {},{} loaded but 0 ores", cp.x, cp.z);
                 }
             } else {
                 notLoaded++;
-                OreHeatmapMod.LOGGER.debug("processRescanBatch: Chunk {},{} not loaded yet - still pending", cp.x, cp.z);
+                OreHeatmapMod.LOGGER.debug("processRescanBatch: Chunk {},{} not loaded yet", cp.x, cp.z);
             }
         }
 
@@ -820,8 +836,6 @@ public class OreHeatmapOverlayManager {
             int progress = pendingChunks.isEmpty() ? 100 : (int) ((chunksScanned / (float) (chunksScanned + pendingChunks.size())) * 100);
             player.displayClientMessage(Component.literal("Rescan progress: " + progress + "% (" + chunksScanned + " done)"), true);
         }
-
-        OreHeatmapMod.LOGGER.debug("processRescanBatch: Batch complete | scanned={} | loaded-zero={} | not-loaded={} | remaining={}", batchScanned, loadedZero, notLoaded, pendingChunks.size());
 
         if (pendingChunks.isEmpty()) {
             finishRescan(level, dimension);

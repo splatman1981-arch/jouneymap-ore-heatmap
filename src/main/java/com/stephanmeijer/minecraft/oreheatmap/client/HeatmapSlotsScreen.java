@@ -12,6 +12,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.nio.file.Path;
@@ -38,72 +40,75 @@ public class HeatmapSlotsScreen extends Screen {
         super.init();
 
         int centerX = this.width / 2;
-        int startY = 40;
-        int rowHeight = 30;
+        int startY = 60;          // Moved down a bit for title breathing room
+        int rowHeight = 40;       // Increased from 30 → more space between rows
 
-        this.clearWidgets();   // Important: clear old widgets first
+        this.clearWidgets();
 
-        // Title labels
-        for (int i = 0; i < SLOT_COUNT; i++) {
-            int y = startY + i * rowHeight - 10;
-            addRenderableOnly(new net.minecraft.client.gui.components.StringWidget(
-                    centerX - 150, y, 200, 10,
-                    Component.literal("Overlay " + (i+1)), this.font));
-        }
-
+        // 5 rows: label + text field
         for (int i = 0; i < SLOT_COUNT; i++) {
             int slotNum = i + 1;
             int y = startY + i * rowHeight;
 
-            // Checkbox (active slot)
-            final int finalI = i;
-            Button checkbox = Button.builder(
-                            Component.literal(selectedSlot == finalI ? "☑" : "☐"),
-                            button -> {
-                                selectedSlot = finalI;
-                                updateCheckboxes();
-                                OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.set(slotNum);
-                            })
-                    .bounds(centerX - 180, y, 20, 20)
-                    .build();
-
-            checkboxButtons[i] = checkbox;
-            addRenderableWidget(checkbox);
+            // Label above field (now with more vertical space)
+            addRenderableOnly(new net.minecraft.client.gui.components.StringWidget(
+                    centerX - 150, y - 15, 200, 10,
+                    Component.literal("Overlay " + slotNum), this.font));
 
             // Text field
-            EditBox field = new EditBox(this.font, centerX - 150, y, 200, 20, Component.literal("Overlay " + slotNum));
+            EditBox field = new EditBox(this.font, centerX - 150, y, 280, 20, Component.literal("Overlay " + slotNum));
             field.setValue(getTrackedString(slotNum));
-            field.setMaxLength(200);
+            field.setMaxLength(300);
             trackedFields[i] = field;
             addRenderableWidget(field);
-
-            // Reset button
-            addRenderableWidget(Button.builder(
-                            Component.literal("Update"),
-                            button -> updateSlot(slotNum))
-                    .bounds(centerX + 60, y, 80, 20)
-                    .build());
         }
-
-        // Bottom buttons
-        addRenderableWidget(Button.builder(
-                        Component.literal("Reset All"),
-                        button -> resetAllSlots())
-                .bounds(centerX - 140, this.height - 40, 120, 20)
-                .build());
-
-        addRenderableWidget(Button.builder(
-                        Component.literal("Save & Close"),
+        // Global tracking toggle (top of GUI)
+        trackingToggleButton = Button.builder(
+                        Component.literal(OreHeatmapConfig.ENABLED.get() ? "Tracking: ON" : "Tracking: OFF"),
                         button -> {
-                            saveAllSlots();
+                            boolean newState = !OreHeatmapConfig.ENABLED.get();
+                            OreHeatmapConfig.ENABLED.set(newState);
+                            trackingToggleButton.setMessage(Component.literal(newState ? "Tracking: ON" : "Tracking: OFF"));
+                            if (!newState && manager != null) {
+                                manager.clearAllOverlays();
+                            }
+                        })
+                .bounds(centerX - 80, 20, 160, 20)   // Top center
+                .build();
+        addRenderableWidget(trackingToggleButton);
+        // Bottom buttons (spaced out more)
+        int buttonY = this.height - 50;   // Moved up slightly for breathing room
+        addRenderableWidget(Button.builder(
+                        Component.literal("Save and Re-scan"),
+                        button -> {
+                            saveAllSlotsAndRescanAll();
                             this.onClose();
                         })
-                .bounds(centerX + 20, this.height - 40, 120, 20)
+                .bounds(centerX - 160, buttonY, 140, 20)
                 .build());
 
-        updateCheckboxes();   // Initial update
-    }
+        addRenderableWidget(Button.builder(
+                        Component.literal("Close"),
+                        button -> this.onClose())
+                .bounds(centerX + 20, buttonY, 100, 20)
+                .build());
 
+        // We'll add Disable Scanning toggle in next step
+    }
+    private List<String> normalizeTrackedList(String input) {
+        if (input == null || input.trim().isEmpty()) {
+            return List.of();           // True empty list — this is what we want
+        }
+        String[] parts = input.trim().split(",");
+        List<String> list = new ArrayList<>();
+        for (String p : parts) {
+            String trimmed = p.trim();
+            if (!trimmed.isEmpty()) {
+                list.add(trimmed);
+            }
+        }
+        return list.isEmpty() ? List.of() : list;
+    }
     private void updateCheckboxes() {
         for (int i = 0; i < SLOT_COUNT; i++) {
             checkboxButtons[i].setMessage(Component.literal(selectedSlot == i ? "☑" : "☐"));
@@ -166,11 +171,11 @@ public class HeatmapSlotsScreen extends Screen {
 
     private void saveAllSlots() {
         // Save text field values to config
-        OreHeatmapConfig.TRACKED_ORES.set(Arrays.asList(trackedFields[0].getValue().split(",")));
-        OreHeatmapConfig.TRACKED_ORES2.set(Arrays.asList(trackedFields[1].getValue().split(",")));
-        OreHeatmapConfig.TRACKED_ORES3.set(Arrays.asList(trackedFields[2].getValue().split(",")));
-        OreHeatmapConfig.TRACKED_ORES4.set(Arrays.asList(trackedFields[3].getValue().split(",")));
-        OreHeatmapConfig.TRACKED_ORES5.set(Arrays.asList(trackedFields[4].getValue().split(",")));
+        OreHeatmapConfig.TRACKED_ORES.set(normalizeTrackedList(trackedFields[0].getValue()));
+        OreHeatmapConfig.TRACKED_ORES2.set(normalizeTrackedList(trackedFields[1].getValue()));
+        OreHeatmapConfig.TRACKED_ORES3.set(normalizeTrackedList(trackedFields[2].getValue()));
+        OreHeatmapConfig.TRACKED_ORES4.set(normalizeTrackedList(trackedFields[3].getValue()));
+        OreHeatmapConfig.TRACKED_ORES5.set(normalizeTrackedList(trackedFields[4].getValue()));
 
         // Save active slot
         OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.set(selectedSlot + 1);
@@ -197,6 +202,40 @@ public class HeatmapSlotsScreen extends Screen {
         }
 
         OreHeatmapMod.LOGGER.info("Saved and applied heatmap slots config");
+    }
+
+    private void saveAllSlotsAndRescanAll() {
+        // Save with proper normalization
+        OreHeatmapConfig.TRACKED_ORES.set(normalizeTrackedList(trackedFields[0].getValue()));
+        OreHeatmapConfig.TRACKED_ORES2.set(normalizeTrackedList(trackedFields[1].getValue()));
+        OreHeatmapConfig.TRACKED_ORES3.set(normalizeTrackedList(trackedFields[2].getValue()));
+        OreHeatmapConfig.TRACKED_ORES4.set(normalizeTrackedList(trackedFields[3].getValue()));
+        OreHeatmapConfig.TRACKED_ORES5.set(normalizeTrackedList(trackedFields[4].getValue()));
+
+        OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.set(selectedSlot + 1);
+
+        // Force save to disk
+        OreHeatmapConfig.SPEC.save();
+
+        // Reload tracked ores into manager
+        manager.loadAllTrackedOres();
+
+        // Clear ALL cache files
+        for (int slot = 1; slot <= 5; slot++) {
+            manager.resetCacheForSlot(slot);
+        }
+
+        // Start full rescan
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player != null && OreHeatmapConfig.ENABLED.get()) {
+            manager.resetCache();
+            player.displayClientMessage(Component.literal("Saved & started full rescan for all overlays"), true);
+        } else {
+            player.displayClientMessage(Component.literal("Saved config (scanning disabled)"), true);
+        }
+
+        OreHeatmapMod.LOGGER.info("Saved config and initiated full rescan");
     }
 
     private void resetSlot(int slot) {

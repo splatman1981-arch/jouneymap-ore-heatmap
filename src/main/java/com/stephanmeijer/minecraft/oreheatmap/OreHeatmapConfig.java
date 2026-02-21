@@ -76,22 +76,16 @@ public class OreHeatmapConfig {
 
         TRACKED_ORES2 = BUILDER
                 .comment("List of ores to track for 2nd overlay.")
-                .defineListAllowEmpty("trackedOres2", List.of(
-                        "#c:ores/coper/rich"
-                ), OreHeatmapConfig::validateOreEntry);
+                .defineListAllowEmpty("trackedOres2", List.of(), OreHeatmapConfig::validateOreEntry);
         TRACKED_ORES3 = BUILDER
                 .comment("List of ores to track for 3rd overlay.")
-                .defineListAllowEmpty("trackedOres3", List.of(
-                        "#c:ores/cast_iron/rich"
-                ), OreHeatmapConfig::validateOreEntry);
+                .defineListAllowEmpty("trackedOres3", List.of(), OreHeatmapConfig::validateOreEntry);
         TRACKED_ORES4 = BUILDER
                 .comment("List of ores to track for 4th overlay.")
                 .defineListAllowEmpty("trackedOres4", List.of(), OreHeatmapConfig::validateOreEntry);
         TRACKED_ORES5 = BUILDER
                 .comment("List of ores to track for 5th overlay.")
-                .defineListAllowEmpty("trackedOres5", List.of(
-                        ""
-                ), OreHeatmapConfig::validateOreEntry);
+                .defineListAllowEmpty("trackedOres5", List.of(), OreHeatmapConfig::validateOreEntry);
 
         BUILDER.pop();
 
