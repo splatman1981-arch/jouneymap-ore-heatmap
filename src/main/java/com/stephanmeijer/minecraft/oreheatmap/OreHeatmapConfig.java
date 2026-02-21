@@ -6,7 +6,7 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 
 public class OreHeatmapConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
-    public static final ModConfigSpec.DoubleValue RESCAN_RADIUS_MULTIPLIER;
+//    public static final ModConfigSpec.DoubleValue RESCAN_RADIUS_MULTIPLIER;
     public static final ModConfigSpec.IntValue RESCAN_CHUNKS_PER_TICK;
     public static final ModConfigSpec.BooleanValue ENABLED;
     public static final ModConfigSpec.IntValue SCAN_RADIUS;
@@ -47,9 +47,9 @@ public class OreHeatmapConfig {
                 .comment("Show the overlay in cave/underground maps")
                 .define("showInCaves", true);
 
-        RESCAN_RADIUS_MULTIPLIER = BUILDER
-                .comment("Re-Scan Radius Multiplier")
-                .defineInRange("rescanRadiusMultiplier", 2.0, 1.0, 5.0);
+        //RESCAN_RADIUS_MULTIPLIER = BUILDER
+        //        .comment("Re-Scan Radius Multiplier")
+        //        .defineInRange("rescanRadiusMultiplier", 2.0, 1.0, 5.0);
 
         RESCAN_CHUNKS_PER_TICK = BUILDER
                 .comment("Re-Scan Chunks per tick.")

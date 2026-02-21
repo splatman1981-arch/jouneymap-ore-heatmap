@@ -38,6 +38,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.common.ModConfigSpec;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
@@ -46,7 +47,7 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
  * Uses event-based architecture: scans chunks when they load.
  */
 public class OreHeatmapOverlayManager {
-    private int activeOverlaySlot = OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.get();
+    public int activeOverlaySlot = OreHeatmapConfig.ACTIVE_OVERLAY_SLOT.get();
     public Map<String, Integer> currentOreCounts = new ConcurrentHashMap<>();
     private final IClientAPI jmAPI;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -67,18 +68,13 @@ public class OreHeatmapOverlayManager {
     private static final int COLOR_MID = 0xFF8C00;   // Dark orange
     private static final int COLOR_HIGH = 0x8B0000;  // Dark red
 
-    // === NEW: Per-slot tracking & caches (this fixes all 3 issues) ===
     private final Map<Integer, Map<String, Integer>> slotOreCounts = new ConcurrentHashMap<>();
     private final Map<Integer, Set<ResourceLocation>> slotTrackedBlocks = new HashMap<>();
     private final Map<Integer, Set<TagKey<Block>>> slotTrackedTags = new HashMap<>();
-
-    // Y-coordinate for overlay polygon plane
     private static final int POLYGON_Y_LEVEL = 64;
-
     private int tickCounter;
     private int saveCounter;
     private static final int SAVE_INTERVAL = 600; // Save every 30 seconds (600 ticks)
-
     private ResourceKey<Level> currentDimension;
     public String currentWorldId;
     private boolean wasEnabled;  // Track previous enabled state
@@ -409,23 +405,9 @@ public class OreHeatmapOverlayManager {
 
     public int calculateVisibleRadius() {
         Minecraft mc = Minecraft.getInstance();
-        int mcRadius = mc.options.renderDistance().get();
-
-        try {
-            UIState mm = jmAPI.getUIState(Context.UI.Minimap);
-            if (mm != null) {
-                int zoom = mm.zoom;
-                int blockRad = 128 >> zoom;
-                int radius = Math.max(2, (blockRad / 16) + 1);
-                OreHeatmapMod.LOGGER.debug("calculateVisibleRadius: Using minimap JM radius: {}", radius);
-                return radius;
-            }
-        } catch (Exception e) {
-            OreHeatmapMod.LOGGER.debug("Could not get minimap state - falling back to MC render distance", e);
-        }
-
-        OreHeatmapMod.LOGGER.debug("calculateVisibleRadius: Using MC render distance: {}", mcRadius);
-        return mcRadius;
+        int radius = mc.options.renderDistance().get();
+        OreHeatmapMod.LOGGER.debug("calculateVisibleRadius: {} ", radius);
+        return radius;
     }
 
     private int scanChunk(Level level, ChunkPos pos) {
@@ -618,7 +600,7 @@ public class OreHeatmapOverlayManager {
         activeOverlays.clear();
     }
     public void resetCacheForSlot(int slot) {
-        Path cacheFile = getCacheFilePathForSlot(slot);   // we'll make this method public too
+        Path cacheFile = getCacheFilePathForSlot(slot);
         if (cacheFile != null && Files.exists(cacheFile)) {
             try {
                 Files.delete(cacheFile);
@@ -629,7 +611,7 @@ public class OreHeatmapOverlayManager {
         }
     }
 
-    // Make this one public too
+
     public Path getCacheFilePathForSlot(int slot) {
         if (cacheDirectory == null || currentWorldId == null) return null;
         String fileName = "overlay" + slot + ".json";
@@ -845,10 +827,16 @@ public class OreHeatmapOverlayManager {
     private void finishRescan(Level level, ResourceKey<Level> dimension) {
         isRescanning = false;
 
+        //loadCacheFromDisk();                    // Force fresh data
+        recalculateMaxOreCountForActiveSlot();  // Update color scale
+
         if (OreHeatmapConfig.ENABLED.get()) {
             ChunkPos playerChunk = new ChunkPos(Minecraft.getInstance().player.blockPosition());
             int visibleRadius = calculateVisibleRadius();
             updateOverlays(level, dimension, currentOreCounts, playerChunk, visibleRadius);
+            OreHeatmapMod.LOGGER.debug("finishRescan: Refreshed overlays for slot {}", activeOverlaySlot);
+        } else {
+            clearAllOverlays();
         }
 
         saveCacheToDisk();
@@ -858,6 +846,7 @@ public class OreHeatmapOverlayManager {
             player.displayClientMessage(Component.literal("Background rescan complete!"), true);
         }
 
-        OreHeatmapMod.LOGGER.info("Background rescan finished | total scanned: {}", chunksScanned);
+        OreHeatmapMod.LOGGER.info("Background rescan finished | total scanned: {} | slot: {}",
+                chunksScanned, activeOverlaySlot);
     }
 }
