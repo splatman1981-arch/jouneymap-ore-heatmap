@@ -1,6 +1,7 @@
 package com.stephanmeijer.minecraft.oreheatmap;
 
 import java.util.List;
+
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 public class OreHeatmapConfig {

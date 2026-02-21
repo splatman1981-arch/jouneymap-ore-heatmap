@@ -1,5 +1,8 @@
 package com.stephanmeijer.minecraft.oreheatmap.client;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.stephanmeijer.minecraft.oreheatmap.OreHeatmapConfig;
 import com.stephanmeijer.minecraft.oreheatmap.OreHeatmapMod;
 import com.stephanmeijer.minecraft.oreheatmap.journeymap.OreHeatmapOverlayManager;
@@ -11,9 +14,6 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.NotNull;
-
-import java.util.ArrayList;
-import java.util.List;
 
 public class HeatmapSlotsScreen extends Screen {
 
