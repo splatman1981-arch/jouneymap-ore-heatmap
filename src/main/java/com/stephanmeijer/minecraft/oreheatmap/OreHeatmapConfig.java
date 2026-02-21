@@ -90,9 +90,13 @@ public class OreHeatmapConfig {
      * Supports: "namespace:block_id" or "#namespace:tag"
      */
     private static boolean validateOreEntry(Object obj) {
-        if (!(obj instanceof String str)) return false;
+        if (!(obj instanceof String str)) {
+            return false;
+        }
         str = str.trim();
-        if (str.isEmpty()) return true; // allow empty entries
+        if (str.isEmpty()) {
+            return true; // allow empty entries
+        }
 
         if (str.startsWith("#")) {
             String tag = str.substring(1);

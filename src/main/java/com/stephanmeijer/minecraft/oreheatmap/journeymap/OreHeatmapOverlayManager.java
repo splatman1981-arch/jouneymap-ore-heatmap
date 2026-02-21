@@ -6,7 +6,12 @@ import java.io.Writer;
 import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -120,7 +125,9 @@ public class OreHeatmapOverlayManager {
 
         for (String entry : list) {
             String trimmed = entry.trim();
-            if (trimmed.isEmpty()) continue;
+            if (trimmed.isEmpty()) {
+                continue;
+            }
 
             if (trimmed.startsWith("#")) {
                 String tagId = trimmed.substring(1);
@@ -147,7 +154,9 @@ public class OreHeatmapOverlayManager {
             Path worldPath = mc.getSingleplayerServer().getWorldPath(LevelResource.ROOT);
             Path normalized = worldPath.toAbsolutePath().normalize();
             Path fileName = normalized.getFileName();
-            if (fileName == null) return null;
+            if (fileName == null) {
+                return null;
+            }
             String folder = fileName.toString();
             return "local_" + folder.replaceAll("[^a-zA-Z0-9_()-]", "_");
         } else if (mc.getCurrentServer() != null) {
@@ -157,7 +166,9 @@ public class OreHeatmapOverlayManager {
     }
 
     private Path getCacheFilePath(int slot) {
-        if (cacheDirectory == null || currentWorldId == null) return null;
+        if (cacheDirectory == null || currentWorldId == null) {
+            return null;
+        }
         return cacheDirectory.resolve(currentWorldId).resolve("overlay" + slot + ".json");
     }
 
@@ -189,10 +200,14 @@ public class OreHeatmapOverlayManager {
     }
 
     private void saveCacheToDisk() {
-        if (currentOreCounts.isEmpty()) return;
+        if (currentOreCounts.isEmpty()) {
+            return;
+        }
 
         Path cacheFile = getCacheFilePath(activeOverlaySlot);
-        if (cacheFile == null) return;
+        if (cacheFile == null) {
+            return;
+        }
 
         try {
             Files.createDirectories(cacheFile.getParent());
@@ -209,10 +224,14 @@ public class OreHeatmapOverlayManager {
 
     private boolean ensureCorrectWorld() {
         String newWorldId = getWorldId();
-        if (newWorldId == null) return false;
+        if (newWorldId == null) {
+            return false;
+        }
 
         if (!newWorldId.equals(currentWorldId)) {
-            if (currentWorldId != null) saveCacheToDisk();
+            if (currentWorldId != null) {
+                saveCacheToDisk();
+            }
             currentWorldId = newWorldId;
             loadCacheFromDisk();
             OreHeatmapMod.LOGGER.info("Switched to world: {}", currentWorldId);
@@ -224,17 +243,27 @@ public class OreHeatmapOverlayManager {
 
     @SubscribeEvent
     public void onChunkLoad(ChunkEvent.Load event) {
-        if (!OreHeatmapConfig.ENABLED.get()) return;
-        if (!event.getLevel().isClientSide()) return;
-        if (!(event.getLevel() instanceof Level level)) return;
-        if (!ensureCorrectWorld()) return;
+        if (!OreHeatmapConfig.ENABLED.get()) {
+            return;
+        }
+        if (!event.getLevel().isClientSide()) {
+            return;
+        }
+        if (!(event.getLevel() instanceof Level level)) {
+            return;
+        }
+        if (!ensureCorrectWorld()) {
+            return;
+        }
 
         LevelChunk chunk = (LevelChunk) event.getChunk();
         ChunkPos pos = chunk.getPos();
         String key = pos.x + "," + pos.z;
 
         for (int slot = 1; slot <= 5; slot++) {
-            if (!isSlotConfigured(slot)) continue;
+            if (!isSlotConfigured(slot)) {
+                continue;
+            }
 
             int count = scanChunkForSlot(level, pos, slot);
             if (count > 0) {
@@ -250,7 +279,9 @@ public class OreHeatmapOverlayManager {
     }
 
     private int scanChunkForSlot(Level level, ChunkPos pos, int slot) {
-        if (!level.hasChunk(pos.x, pos.z)) return 0;
+        if (!level.hasChunk(pos.x, pos.z)) {
+            return 0;
+        }
 
         LevelChunk chunk = level.getChunk(pos.x, pos.z);
         Set<ResourceLocation> blocks = slotTrackedBlocks.get(slot);
@@ -287,13 +318,19 @@ public class OreHeatmapOverlayManager {
 
     @SubscribeEvent
     public void onPlayerTick(PlayerTickEvent.Post event) {
-        if (!(event.getEntity() instanceof LocalPlayer player)) return;
+        if (!(event.getEntity() instanceof LocalPlayer player)) {
+            return;
+        }
         if (!OreHeatmapConfig.ENABLED.get()) {
-            if (wasEnabled) clearAllOverlays();
+            if (wasEnabled) {
+                clearAllOverlays();
+            }
             wasEnabled = false;
             return;
         }
-        if (!ensureCorrectWorld()) return;
+        if (!ensureCorrectWorld()) {
+            return;
+        }
 
         if (cacheLoadFailed) {
             cacheLoadFailed = false;
@@ -342,12 +379,16 @@ public class OreHeatmapOverlayManager {
 
             if (totalOres == 0) {
                 PolygonOverlay existing = activeOverlays.remove(chunkKey);
-                if (existing != null) jmAPI.remove(existing);
+                if (existing != null) {
+                    jmAPI.remove(existing);
+                }
                 continue;
             }
 
             String[] parts = chunkKey.split(",");
-            if (parts.length != 2) continue;
+            if (parts.length != 2) {
+                continue;
+            }
 
             ChunkPos chunkPos = new ChunkPos(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]));
 
@@ -393,7 +434,9 @@ public class OreHeatmapOverlayManager {
 
     private int calculateHeatmapColor(int oreCount) {
         int currentMax = maxOreCount.get();
-        if (currentMax <= 1) return COLOR_MID;
+        if (currentMax <= 1) {
+            return COLOR_MID;
+        }
 
         float t = oreCount / (float) currentMax;
         return t < 0.5f ?
@@ -455,11 +498,15 @@ public class OreHeatmapOverlayManager {
     }
 
     public void resetCache() {
-        if (!ensureCorrectWorld()) return;
+        if (!ensureCorrectWorld()) {
+            return;
+        }
 
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
-        if (player == null) return;
+        if (player == null) {
+            return;
+        }
 
         loadAllTrackedOres();
         currentOreCounts.clear();
@@ -498,7 +545,9 @@ public class OreHeatmapOverlayManager {
     public void cycleOverlay() {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
-        if (player == null) return;
+        if (player == null) {
+            return;
+        }
 
         int originalSlot = activeOverlaySlot;
 
@@ -549,7 +598,6 @@ public class OreHeatmapOverlayManager {
 
         OreHeatmapMod.LOGGER.info("Cycled to slot {}", activeOverlaySlot);
     }
-
 
     public void recalculateMaxOreCountForActiveSlot() {
         int max = 1;
