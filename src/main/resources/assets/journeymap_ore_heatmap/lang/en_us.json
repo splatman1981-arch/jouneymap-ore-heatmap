@@ -11,7 +11,7 @@
   "journeymap_ore_heatmap.config.showInCaves.tooltip": "Display the overlay on cave/underground maps",
 
   "key.categories.journeymap_ore_heatmap": "JourneyMap Ore Heatmap",
-  "key.journeymap_ore_heatmap.toggle_overlay": "Toggle Ore Heatmap",
+  "key.journeymap_ore_heatmap.toggle_options": "Toggle Heatmap Options",
   "key.journeymap_ore_heatmap.reset_cache": "Reset Overlay",
   "key.journeymap_ore_heatmap.cycle_overlay": "Cycle/next Overlay",
 

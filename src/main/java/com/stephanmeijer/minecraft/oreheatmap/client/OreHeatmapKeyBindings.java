@@ -21,24 +21,24 @@ import org.lwjgl.glfw.GLFW;
 public class OreHeatmapKeyBindings {
 
     public static final String KEY_CATEGORY = "key.categories." + OreHeatmapMod.MODID;
-    public static final String KEY_TOGGLE_OVERLAY = "key." + OreHeatmapMod.MODID + ".toggle_overlay";
+    public static final String KEY_TOGGLE_OPTIONS = "key." + OreHeatmapMod.MODID + ".toggle_options";
     public static final String KEY_RESET_CACHE = "key." + OreHeatmapMod.MODID + ".reset_cache";
     public static final String KEY_CYCLE_OVERLAY = "key." + OreHeatmapMod.MODID + ".cycle_overlay";
 
-    public static KeyMapping toggleOverlayKey;
+    public static KeyMapping toggleOptionsKey;
     public static KeyMapping resetCacheKey;
     public static KeyMapping cycleOverlayKey;
 
     @SubscribeEvent
     public static void registerKeyMappings(RegisterKeyMappingsEvent event) {
-        toggleOverlayKey = new KeyMapping(
-                KEY_TOGGLE_OVERLAY,
+        toggleOptionsKey = new KeyMapping(
+                KEY_TOGGLE_OPTIONS,
                 KeyConflictContext.IN_GAME,
                 InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_O,
                 KEY_CATEGORY
         );
-        event.register(toggleOverlayKey);
+        event.register(toggleOptionsKey);
 
         resetCacheKey = new KeyMapping(
                 KEY_RESET_CACHE,
@@ -70,11 +70,11 @@ public class OreHeatmapKeyBindings {
     public static class ClientTickHandler {
         @SubscribeEvent
         public static void onClientTick(ClientTickEvent.Post event) {
-            if (toggleOverlayKey == null || resetCacheKey == null || cycleOverlayKey == null) {
+            if (toggleOptionsKey == null || resetCacheKey == null || cycleOverlayKey == null) {
                 return;
             }
 
-            while (toggleOverlayKey.consumeClick()) {
+            while (toggleOptionsKey.consumeClick()) {
                 OreHeatmapPlugin plugin = OreHeatmapPlugin.getInstance();
                 if (plugin != null && plugin.getOverlayManager() != null) {
                     Minecraft mc = Minecraft.getInstance();

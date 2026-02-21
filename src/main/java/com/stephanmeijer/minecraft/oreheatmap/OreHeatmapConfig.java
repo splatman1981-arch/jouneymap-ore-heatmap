@@ -6,7 +6,6 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 
 public class OreHeatmapConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
-//    public static final ModConfigSpec.DoubleValue RESCAN_RADIUS_MULTIPLIER;
     public static final ModConfigSpec.IntValue RESCAN_CHUNKS_PER_TICK;
     public static final ModConfigSpec.BooleanValue ENABLED;
     public static final ModConfigSpec.IntValue SCAN_RADIUS;
@@ -29,7 +28,7 @@ public class OreHeatmapConfig {
 
         ENABLED = BUILDER
                 .comment("Enable the ore heatmap overlay")
-                .define("enabled", true);
+                .define("enabled", false);
 
         SCAN_RADIUS = BUILDER
                 .comment("Chunk scan radius around the player (1-8)")
@@ -47,17 +46,13 @@ public class OreHeatmapConfig {
                 .comment("Show the overlay in cave/underground maps")
                 .define("showInCaves", true);
 
-        //RESCAN_RADIUS_MULTIPLIER = BUILDER
-        //        .comment("Re-Scan Radius Multiplier")
-        //        .defineInRange("rescanRadiusMultiplier", 2.0, 1.0, 5.0);
-
         RESCAN_CHUNKS_PER_TICK = BUILDER
                 .comment("Re-Scan Chunks per tick.")
                 .defineInRange("rescanChunksPerTick", 1, 1, 200);
 
         ACTIVE_OVERLAY_SLOT = BUILDER
-                .comment("Currently active overlay slot (1-5). 1 = default overlay.")
-                .defineInRange("activeOverlaySlot", 1, 1, 5);
+                .comment("Currently active overlay slot (1-5). 0 = default overlay.")
+                .defineInRange("activeOverlaySlot", 0, 0, 5);
 
         BUILDER.pop();
 

@@ -9,18 +9,15 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.stephanmeijer.minecraft.oreheatmap.OreHeatmapConfig;
 import com.stephanmeijer.minecraft.oreheatmap.OreHeatmapMod;
 import journeymap.api.v2.client.IClientAPI;
-import journeymap.api.v2.client.display.Context;
 import journeymap.api.v2.client.display.PolygonOverlay;
 import journeymap.api.v2.client.model.MapPolygon;
 import journeymap.api.v2.client.model.ShapeProperties;
-import journeymap.api.v2.client.util.UIState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -38,7 +35,6 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.common.ModConfigSpec;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
@@ -56,10 +52,6 @@ public class OreHeatmapOverlayManager {
     private final Map<String, Map<String, Integer>> dimensionOreCounts = new ConcurrentHashMap<>();
     private final Map<String, PolygonOverlay> activeOverlays = new ConcurrentHashMap<>();
 
-    // Tracked ores: specific block IDs and tags
-    private final Set<ResourceLocation> trackedBlocks = new HashSet<>();
-    private final Set<TagKey<Block>> trackedTags = new HashSet<>();
-
     // Dynamic color scaling - thread-safe for access from chunk load and player tick events
     private final AtomicInteger maxOreCount = new AtomicInteger(1);
 
@@ -74,7 +66,7 @@ public class OreHeatmapOverlayManager {
     private static final int POLYGON_Y_LEVEL = 64;
     private int tickCounter;
     private int saveCounter;
-    private static final int SAVE_INTERVAL = 600; // Save every 30 seconds (600 ticks)
+    private static final int SAVE_INTERVAL = 1200; // Save every 60 seconds (1200 ticks)
     private ResourceKey<Level> currentDimension;
     public String currentWorldId;
     private boolean wasEnabled;  // Track previous enabled state
@@ -379,9 +371,7 @@ public class OreHeatmapOverlayManager {
             Map<String, Integer> oreCounts = currentOreCounts;
 
             if (enabled && oreCounts != null) {
-                ChunkPos pChunk = new ChunkPos(player.blockPosition());
-                int radius = calculateVisibleRadius();
-                updateOverlays(level, dim, oreCounts, pChunk, radius);
+                updateOverlays(level, dim, oreCounts);
             } else if (wasEnabled) {
                 clearAllOverlays();
             }
@@ -409,43 +399,7 @@ public class OreHeatmapOverlayManager {
         OreHeatmapMod.LOGGER.debug("calculateVisibleRadius: {} ", radius);
         return radius;
     }
-
-    private int scanChunk(Level level, ChunkPos pos) {
-        if (!level.hasChunk(pos.x, pos.z)) {
-            OreHeatmapMod.LOGGER.debug("scanChunk: Chunk {},{} not loaded - skipped", pos.x, pos.z);
-            return -1;
-        }
-
-        LevelChunk chunk = level.getChunk(pos.x, pos.z);
-        int count = 0;
-
-        int minY = level.getMinBuildHeight();
-        int maxY = level.getMaxBuildHeight();
-
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                for (int y = minY; y < maxY; y++) {
-                    BlockPos bp = new BlockPos(pos.getMinBlockX() + x, y, pos.getMinBlockZ() + z);
-                    if (isTrackedOre(chunk.getBlockState(bp))) count++;
-                }
-            }
-        }
-
-        OreHeatmapMod.LOGGER.debug("scanChunk: Scanned chunk {},{} → {} ores found", pos.x, pos.z, count);
-        return count;
-    }
-
-    private boolean isTrackedOre(BlockState state) {
-        ResourceLocation id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
-        if (trackedBlocks.contains(id)) return true;
-        for (TagKey<Block> tag : trackedTags) {
-            if (state.is(tag)) return true;
-        }
-        return false;
-    }
-
-    public void updateOverlays(Level level, ResourceKey<Level> dim, Map<String, Integer> oreCounts,
-                               ChunkPos center, int radius) {
+    public void updateOverlays(Level level, ResourceKey<Level> dim, Map<String, Integer> oreCounts) {
         float maxOpacity = (float) (double) OreHeatmapConfig.OVERLAY_OPACITY.get();
         int currentMax = maxOreCount.get();
 
@@ -711,40 +665,12 @@ public class OreHeatmapOverlayManager {
             // Rebuild the visible heatmap
             Level level = player.level();
             ResourceKey<Level> dim = level.dimension();
-            ChunkPos pChunk = new ChunkPos(player.blockPosition());
-            int radius = calculateVisibleRadius();
-            updateOverlays(level, dim, currentOreCounts, pChunk, radius);
+            updateOverlays(level, dim, currentOreCounts);
 
             player.displayClientMessage(Component.literal("Switched to Overlay " + activeOverlaySlot), true);
         }
 
         OreHeatmapMod.LOGGER.info("Cycled to slot {}", activeOverlaySlot);
-    }
-
-    public void setActiveSlot(int slot) {
-        if (slot < 0 || slot > 5) return;
-
-        activeOverlaySlot = slot;
-
-        if (slot == 0) {
-            OreHeatmapConfig.ENABLED.set(false);
-            clearAllOverlays();
-        } else {
-            OreHeatmapConfig.ENABLED.set(true);
-            currentOreCounts = slotOreCounts.computeIfAbsent(slot, k -> new ConcurrentHashMap<>());
-            recalculateMaxOreCountForActiveSlot();
-
-            // Refresh display
-            Minecraft mc = Minecraft.getInstance();
-            LocalPlayer player = mc.player;
-            if (player != null) {
-                Level level = player.level();
-                ResourceKey<Level> dim = level.dimension();
-                ChunkPos pChunk = new ChunkPos(player.blockPosition());
-                int radius = calculateVisibleRadius();
-                updateOverlays(level, dim, currentOreCounts, pChunk, radius);
-            }
-        }
     }
 
     private boolean isSlotConfigured(int slot) {
@@ -765,7 +691,7 @@ public class OreHeatmapOverlayManager {
             return;
         }
 
-        String dimKey = dimension.location().toString();
+      //  String dimKey = dimension.location().toString();
         Map<String, Integer> oreCounts = currentOreCounts;
         if (oreCounts == null) {
             OreHeatmapMod.LOGGER.warn("processRescanBatch: No oreCounts map - stopping");
@@ -826,14 +752,10 @@ public class OreHeatmapOverlayManager {
 
     private void finishRescan(Level level, ResourceKey<Level> dimension) {
         isRescanning = false;
-
-        //loadCacheFromDisk();                    // Force fresh data
         recalculateMaxOreCountForActiveSlot();  // Update color scale
 
         if (OreHeatmapConfig.ENABLED.get()) {
-            ChunkPos playerChunk = new ChunkPos(Minecraft.getInstance().player.blockPosition());
-            int visibleRadius = calculateVisibleRadius();
-            updateOverlays(level, dimension, currentOreCounts, playerChunk, visibleRadius);
+            updateOverlays(level, dimension, currentOreCounts);
             OreHeatmapMod.LOGGER.debug("finishRescan: Refreshed overlays for slot {}", activeOverlaySlot);
         } else {
             clearAllOverlays();
